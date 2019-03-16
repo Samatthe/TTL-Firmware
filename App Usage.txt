@@ -1,0 +1,220 @@
+EXPLAINATION OF LED MODES and OPTIONS (MAIN SCREEN):
+
+* Head/Brake Lights: This option allows the user to turn on/ff the head and tail lights
+
+* Side Lights: This option allows the user to turn on/off the RGB side lights
+
+* Light Sensor: This option allows the user to de/activate the control of all lights based on the light sensor. This is not yet implemented.
+
+* Sensor Control: THis option allows the user to de/activate the control of all lights based on the IMU sensor readings.
+
+- Read Current Settings: Reads the mode values stored on the TTL Control Module into the app.
+
+- Apply: Applies the LED mode values configured in the app to the TTL Control Module.
+
+- Static: Side LEDs are set to static colors controlled by the user
+
+	- Left LED Color
+		
+		* Red: Sets the brightness of the left red LEDs
+
+		* Green: Sets the brightness of the left green LEDs
+
+		* Blue: Sets the brightness of the left blue LEDs
+
+	- Right LED Color
+
+		* Red: Sets the brightness of the right red LEDs
+
+		* Green: Sets the brightness of the right green LEDs
+
+		* Blue: Sets the brightness of the right blue LEDs
+
+- Color Cycling: Side LEDs cycle through all colors of the color wheel
+
+	* Cycle Rate: Sets the speed at which the side LEDs cycle through the color wheel
+
+	* Brighness: Sets the brightness of the side LEDs
+
+- Compass Cycle: Side LEDs' color is set based on the direction the board is facing
+
+	* Brightness: Sets the brightness of the side LEDs
+
+- Throttle Based: Side LEDs' color is set based on the position of the remote's throttle
+
+	* Sensitivity: Sets how quickly the LEDs' color changes
+
+	* Brightness: Sets the brightness of the LEDs
+
+- RPM Based: Side LEDs' brightness is set based on on the RPM of the motor while their color cycles through the color wheel. The ESC's Max/Min RPM settings are used as the scale
+
+	* Cycle Rate: Sets the speed at which the side LEDs cycle through the color wheel
+
+- RPM + Throttle: Side LEDs' brightness is set based on on the RPM of the motor while their color is set by the position of the remote's throttle. The ESC's Max/Min RPM settings are used as the scale.
+
+- X Accel Based: Side LEDs' brightness is set based on the amount of acceleration the IMU experiences along it's X axis (left to right of board).
+
+	* Cycle Rate: Sets the speed at which the side LEDs cycle through the color wheel
+
+- Y Accel Based: Side LEDs' brightness is set based on the amount of acceleration the IMU experiences along it's Y axis (front to back of board).
+
+	* Cycle Rate: Sets the speed at which the side LEDs cycle through the color wheel
+
+- Custom: Allows user to select the basis of the side LEDs' color and brightness
+
+	* All methods outlined above, along with other, are available for creating a custom lighting mode
+	* Due to the large number of option available in this mode, the basis inputs will not be described here
+	* Experiementation with the differnt color and brightness basis' is required for full understanding of this mode
+
+
+
+
+
+EXPLAINATION OF MOTOR INFO SCREEN:
+
+- Live Graph: Shows a plot of the various values reported by the ESC. The values displayed are controlled using the check boxes below
+
+- Motor Stats: These fields show the last value reported by the ESC. When the check box next to a given value is checked, THat value is displayed on the graph above
+
+- Log Enable Button: This toggle button controls whether or not the motor stat values are stored in the data log or not. THis button will only appear if logging is enabled in the settings menu.
+
+
+
+EXPLANATION OF SENSOR INFO SCREEN:
+
+- Live Graph: Shows a plot of the various sensor measuremnts gathered from the IMU along with the throttle values of the connected remote. The values displayed are controlled using the check boxes below.
+
+- Sensor Measurments: These fields show the last value read from the IMUs sensors and the connected remote.
+
+- Log Enable Button: This toggle button controls whether or on the the IMU sensor values and remote throttle are stored in the log or not. This button will only appear if logging is enabled in the settings menu.
+
+
+
+
+EXPLAINATION OF THE MAP SCREEN:
+
+- Data Displayed: This part option is not implemented yet. Only the data collected since opening the app will be displayed.
+
+- Map: Displays rider's current location and shows the rider's path. The path will only be drawn whe the wheels of the eboard are spinning.
+
+- Longitude: The longitude of the rider's last reported position.
+
+- Latitude: The latitude of the rider's last reported position.
+
+- ALtitude: The altitude of the rider's last reported position.
+
+- Speed: The speed the rider is curreenly goingas reported from google maps.
+
+- Max Speed: The top speed the rider reached during the current trip.
+
+- Distance:  The total distance of the riders trip. This value only includes the distance traveled on the eboard.
+
+- Log Enable Button:  This toggle button controls whether or on the the map data is stored in the log or not. This button will only appear if logging is enabled in the settings menu.
+
+
+
+EXPLAINATION OF MAIN MENU:
+
+- Start/Stop Logging: Allows the user to start/stop collecting a log of all data selected in the main menu. This log will be stored in the TelTail folder in the top level internal storage location.
+
+- Dis/Connect BLE: Allows the user to Dis/Connect from/to the TTL Control Module.
+
+- Calibrate IMU: Allows the user to calibrate the IMU 
+
+- Toggle LEDs: Allows the user to turn on/off all of the lights
+
+- Remote: COvered in it's own section below
+
+- Settings: Covered in it's own section below
+
+
+
+
+
+EXPLANATION OF THE REMOTE SCREEN:
+
+* Allows the user to control their eboard speed and lights using a relative joystick interface. This is in case the rider's main controller dies or fails. This is not recommended to be used as the rider's main remote.
+
+- Joystick Area: The large open area in the center of the screen is used to control the throttle of the eboard. A relative joystick will appear wherever a finger is placed.
+
+- Remote Menu
+
+	* Connect/Disconnect: Connector or Disconnect to the TTL COntrol Module through bluetooth
+
+	* Help: This is not implemented yet
+
+- Light Control Buttons: These buttons provide the user with the ability to turn on/ff all of the lights, control the aux output (if selected in the settings menu), and increment/decrement the LED mode.
+
+
+
+
+
+EXPLAINATION OF SETTINGS OPTIONS:
+
+- Configure Bluetooth
+	
+	* Connect On Startup: This option, when checked, sets the app to automatically connect to the TTL Control Module when the app is opened
+
+	* iBeacon Auto Connect: This option is not implemented yet
+
+- Configure Data Logging
+
+	* Enable Logging: This option allows the user to choose whether the data logging buttons are visible in the main app screen and main men
+	
+	* Max Log Size: This option is not implemented yet
+
+- Cofigure Module Orientation
+	
+	* Connectors Orientation: This option sets the orientaion of the module's axis in line with the connector pins.
+
+	* Power Cord Orientation: This option set the orientation of the module's axis in line with where the power cord exits.
+
+	- Read Orientation Settings: Reads the orientation values stored on the TTL Control Module.
+
+	- Apply Orientation Settings: Applies the orientation values displayed in the app to the TTL Control Module.
+
+- Configure Control Buttons
+
+	* Aux Output Enabled: THis option allows the user to enable or disbale the aux output on the TTL Control Module. Control buttons for the aux output will dis/appear depending on the stat of this option.
+
+		* Aux Output Type: When the aux output is enabled, this option sets the type of control the user has over the aux output
+
+		* On Duration
+	
+	- Single Axis Remotes
+
+		* Aux Control: When the aux ouput is enabled, this option sets how the aux output os enabled using the button input on the TTL Control Module.
+
+		* Toggle All: This option sets how the user interfaces with the remote button to toggle on/off all of the LEDs. (Exclude the aux output)
+
+		* Toggle Headlights: This option sets how the user interfaces with the remote button to toggle on/off the headlights and tailights.
+
+		* Toggle Side Lights: This option sets how the user interfaces with the remote button to toggle on/off the RGB side lights.
+
+		* LED Mode Up: This option sets how the user interfaces with the remote button to cycle "up" through the LED modes.
+
+		* LED Mode Down: This option sets how the user interfaces with the remote button to toggle on/off the headlights.
+
+	- Dual Axis Remotes
+
+		* All options set the same options as above, except more control options are provided due to the additional remote axis.
+
+- Configure Sensors
+
+	* Sensitivity: This option allows the user to change the sensitivity of the kalman filter applied to a given sensor reading
+
+	* Calibrate Light Sensor: The functionality of this button is not yet implemented.
+
+	* Calibrate Accelerometer: This button is to be used to calibrate the accelerometer readings alone. The board should be stationary when pressed.
+
+	* Calibrate Gyroscope: This button is to be used to calibrate the gyroscope readings alone. The board should be stationary on level ground when pressed.
+
+	* Read Sesnor Info: This button reads the the current "Error" and "Sensitivity" values stored in the TTL Control Module for all sensor types
+
+* Read LED Settings on Statup: When checked (and connected to TTL Control Module) the app will read the current LED settings stored on the module when opened.
+
+* Calibrate IMU: This button will calibrate the IMU sensor reading of the TTL Control Module. The board should be stationary on level ground when pressed.
+
+- Motor Info
+
+	* Read Motor Configuration: This button will read the settings of the ESC and display them in the fields above

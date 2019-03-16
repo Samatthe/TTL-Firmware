@@ -1,0 +1,47 @@
+FIRST FLASH:
+
+1. Erase Chip
+
+2. Flash "samd21_sam_ba atmel.hex"
+
+3. install SAM-BA Monitor "2.15"
+
+4. Use SAM-BA Monitor to Flash program to start address "0x02000"
+
+5. Reset Device
+
+
+
+
+REFLASHING DEVICE:
+
+1. Make module is powered off
+
+2. Connect USB cable between module and PC
+
+3. Hold "Flash" button on module and power it on (PC should recognize connected device. Release button after this happens. Should be almost instant)
+
+4. Run SAM-BA Monitor "2.15"
+
+5. Change address under Flash tab to "0x02000"
+
+6. Open latest .bin file in the "Send File Name" field
+
+7. Set script to "Erase application area" 
+
+8. Press "Send File" (In case of error contact Matt Sauve)
+
+9. If no error, close SAM-BA 2.15
+
+10. Disconnect USB cable from both devices
+
+11. Power cycle the module and test out any new features
+
+
+
+
+COMPILING TTL PROJECT:
+
+1. Navigate to: Project -> [Project Name] Properties -> Toolchain -> ARM/GNU Linker -> Memory Settings
+
+2. Add ".text=0x2000" to Flash Segment

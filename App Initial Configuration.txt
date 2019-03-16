@@ -1,0 +1,22 @@
+CONNECTING TO THE TTL CONTROL MODULE:
+
+1. Go to the settings menu
+
+2. Click "Configure Bluetooth"
+
+3. Click "Choose Device"
+
+4. Ensure the TTL Control Module is powered
+
+4. Select "TelTail" from the list of bluetooth devices
+
+
+SETTING THE ORIENTAION OF THE MODULE:
+
+1. Go to the settings menu
+
+2. Click "Configure Module Orientation"
+
+3. Set "Connectors Orientation" to the direction the LED connectors are pointing, relative to the electric skateboard
+
+4. Set "Power Cord Orientation" to the direction the power cord (exiting the module) is pointing, relative to the electric skateboad

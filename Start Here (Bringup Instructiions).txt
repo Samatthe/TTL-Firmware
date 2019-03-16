@@ -1,0 +1,83 @@
+FIRST FLASH:
+
+1. Erase Chip
+
+2. Flash "samd21_sam_ba atmel.hex"
+
+3. install SAM-BA Monitor "2.15"
+
+4. Use SAM-BA Monitor to Flash program to start address "0x02000"
+
+5. Reset Device
+
+
+
+COMPILATION CHANGES TO TTL PROJECT:
+
+1. Navigate to: Project -> [Project Name] Properties -> Toolchain -> ARM/GNU Linker -> Memory Settings
+
+2. Add ".text=0x2000" to Flash Segment (If not present already)
+
+
+
+SET THE EEPROM FUSE:
+
+1. Click on "Device Programming" tool in toolbar
+
+2. Connect to the SAMD21 by clicking "Apply"
+
+3. Navigate to "Fuses" tab
+
+4. Change "USER_WORD_0.NVMCTRL_EEPROM_SIZE" to "0x02"
+
+5. Click "Program"
+
+
+
+FLASHING MODULE THROUGH JTAG (Required for initial programming):
+
+1. If all instructions above have been followed the project should be ready to be flashed
+
+2. Press CTL+ALT+F5, or the "Start Without Debugging" button in the tool bar (green play button) 
+
+
+
+REFLASHING DEVICE THROUGH USB:
+
+1. Make module is powered off
+
+2. Connect USB cable between module and PC
+
+3. Hold "Flash" button on module and power it on (PC should recognize connected device. Release button after this happens. Should be almost instant)
+
+4. Run SAM-BA Monitor "2.15"
+
+5. Change address under Flash tab to "0x02000"
+
+6. Open latest .bin file in the "Send File Name" field
+
+7. Set script to "Erase application area" 
+
+8. Press "Send File" (In case of error contact Matt Sauve)
+
+9. If no error, close SAM-BA 2.15
+
+10. Disconnect USB cable from both devices
+
+11. Power cycle the module and test out any new features
+
+
+
+TROUBLESHOOTING COMMON ISSUES:
+
+- Lights flash red and do nothing else
+
+	* This indicates an issue with the IMU communication.
+	* This is likely caused by a bad solder joint
+	* Try resoldering the IMU and restarting the module
+
+- Light flash blue and do nothing else
+
+	* This indicates an issue with the BLE module communication
+	* This is likely caused by a bad solder joint
+	* Try resoldering the BLE module and restarting the module

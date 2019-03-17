@@ -23,19 +23,23 @@ REFLASHING DEVICE:
 
 4. Run SAM-BA Monitor "2.15"
 
-5. Change address under Flash tab to "0x02000"
+5. Select "samd21_xplained_pro" as your board
 
-6. Open latest .bin file in the "Send File Name" field
+6. click "connect"
 
-7. Set script to "Erase application area" 
+7. Change address under Flash tab to "0x02000"
 
-8. Press "Send File" (In case of error contact Matt Sauve)
+8. Open latest .bin file in the "Send File Name" field
 
-9. If no error, close SAM-BA 2.15
+9. Set script to "Erase application area" and execute
 
-10. Disconnect USB cable from both devices
+10. Press "Send File" (In case of error contact Matt Sauve)
 
-11. Power cycle the module and test out any new features
+11. If no error, close SAM-BA 2.15
+
+12. Disconnect USB cable from both devices
+
+13. Power cycle the module and test out any new features
 
 
 

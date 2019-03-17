@@ -223,7 +223,7 @@ void ERROR_LEDs(uint8_t error_type){
 		setRightRGB(0,0,0);
 		
 		setRed(0);
-		setWhite(0xFFFF);
+		setWhite(0);
 		setAux(0);
 
 		while(millis() - timer < 1000) {

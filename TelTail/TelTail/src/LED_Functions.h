@@ -172,37 +172,37 @@ struct RGB_Vals setCycleColor(uint16_t _upColor, uint16_t _downColor, int _cycle
 }
 
 void setConstBases(){
-	ColorBase[MODE_STATIC] = 0;
-	RateBase[MODE_STATIC] = 0;
-	BrightBase[MODE_STATIC] = 0;
+	ColorBase[MODE_STATIC] = COLOR_STATIC;
+	RateBase[MODE_STATIC] = RATE_STATIC;
+	BrightBase[MODE_STATIC] = BRIGHT_STATIC;
 	
-	ColorBase[MODE_COLOR_CYCLE] = 1;
-	RateBase[MODE_COLOR_CYCLE] = 0;
-	BrightBase[MODE_COLOR_CYCLE] = 0;
+	ColorBase[MODE_COLOR_CYCLE] = COLOR_COLOR_CYCLE;
+	RateBase[MODE_COLOR_CYCLE] = RATE_STATIC;
+	BrightBase[MODE_COLOR_CYCLE] = BRIGHT_STATIC;
 	
-	ColorBase[MODE_COMPASS_CYCLE] = 2;
-	RateBase[MODE_COMPASS_CYCLE] = 0;
-	BrightBase[MODE_COMPASS_CYCLE] = 0;
+	ColorBase[MODE_COMPASS_CYCLE] = COLOR_COMPASS;
+	RateBase[MODE_COMPASS_CYCLE] = RATE_STATIC;
+	BrightBase[MODE_COMPASS_CYCLE] = BRIGHT_STATIC;
 	
-	ColorBase[MODE_THROTTLE] = 6;
-	RateBase[MODE_THROTTLE] = 0;
-	BrightBase[MODE_THROTTLE] = 0;
+	ColorBase[MODE_THROTTLE] = COLOR_THROTTLE;
+	RateBase[MODE_THROTTLE] = RATE_STATIC;
+	BrightBase[MODE_THROTTLE] = BRIGHT_STATIC;
 	
-	ColorBase[MODE_RPM_CYCLE] = 1;
-	RateBase[MODE_RPM_CYCLE] = 3;
-	BrightBase[MODE_RPM_CYCLE] = 3;
+	ColorBase[MODE_RPM_CYCLE] = COLOR_COLOR_CYCLE;
+	RateBase[MODE_RPM_CYCLE] = RATE_RPM;
+	BrightBase[MODE_RPM_CYCLE] = BRIGHT_RPM;
 	
-	ColorBase[MODE_RPM_THROTTLE] = 6;
-	RateBase[MODE_RPM_THROTTLE] = 0;
-	BrightBase[MODE_RPM_THROTTLE] = 3;
+	ColorBase[MODE_RPM_THROTTLE] = COLOR_THROTTLE;
+	RateBase[MODE_RPM_THROTTLE] = RATE_STATIC;
+	BrightBase[MODE_RPM_THROTTLE] = BRIGHT_RPM;
 	
-	ColorBase[MODE_X_ACCEL] = 1;
-	RateBase[MODE_X_ACCEL] = 0;
-	BrightBase[MODE_X_ACCEL] = 5;
+	ColorBase[MODE_X_ACCEL] = COLOR_COLOR_CYCLE;
+	RateBase[MODE_X_ACCEL] = RATE_STATIC;
+	BrightBase[MODE_X_ACCEL] = BRIGHT_X_ACCEL;
 	
-	ColorBase[MODE_Y_ACCEL] = 1;
-	RateBase[MODE_Y_ACCEL] = 0;
-	BrightBase[MODE_Y_ACCEL] = 6;
+	ColorBase[MODE_Y_ACCEL] = COLOR_Y_ACCEL;
+	RateBase[MODE_Y_ACCEL] = RATE_STATIC;
+	BrightBase[MODE_Y_ACCEL] = BRIGHT_STATIC;
 }
 
 // Flash the side LEDs red until restart
@@ -215,7 +215,7 @@ void ERROR_LEDs(uint8_t error_type){
 		tempR = 0xFFFF;
 	if(error_type >= 2 && error_type <= 4)
 		tempG = 0xFFFF;
-	if(error_type == 1 || error_type == 3 || error_type == 4)
+	if(error_type == 1 || error_type == 3 || error_type == 5)
 		tempB = 0xFFFF;
 
 	while(1){
@@ -227,8 +227,7 @@ void ERROR_LEDs(uint8_t error_type){
 		setAux(0);
 
 		while(millis() - timer < 1000) {
-			if(timer > millis())
-			timer = 0;
+			check_time(&timer);
 		}
 		timer = millis();
 
@@ -240,8 +239,7 @@ void ERROR_LEDs(uint8_t error_type){
 		setAux(1);
 
 		while(millis() - timer < 250) {
-			if(timer > millis())
-			timer = 0;
+			check_time(&timer);
 		}
 		timer = millis();
 	}
@@ -252,8 +250,7 @@ uint32_t turnTimer = 0;
 uint16_t turnOutput = 0;
 void TurnSignal(bool direction){
 
-	if(turnTimer > millis())
-		turnTimer = 0;
+	check_time(&turnTimer);
 	if(turnOutput == 0x0 && (millis() - turnTimer >= TURN_OFF_TIME)){
 		turnOutput = 0xFFFF;
 		turnTimer = millis();

@@ -21,12 +21,17 @@
 #include <string.h>
 #include "IMU.h"
 #include "Timing.h"
+#include "Remote_Vars.h"
+#include "ESC_Vars.h"
 #include "LED_Vars.h"
 #include "LED_Functions.h"
 #include "Controls.h"
-#include "EEPROM_Functions.h"
+#include "EEPROM_Functions.h"#include "VESC_UART.h"
 #include <math.h>
 
+///////////   VESC Communication Variables   ///////////
+////////////////////////////////////////////////////////
+uint8_t configured_comms = COMMS_NONE;
 
 ////////////   HW Configuration Variables   ////////////
 ////////////////////////////////////////////////////////
@@ -46,46 +51,10 @@ uint8_t I2C_slave_write_buffer[SLAVE_WRITE_DATA_LENGTH];
 static struct i2c_slave_packet packet;
 
 // usart globals
-#define USART_READ_DATA_LENGTH 15
-uint8_t USART_read_buffer[USART_READ_DATA_LENGTH];
-uint8_t send_buffer[44];
+#define BLE_USART_READ_DATA_LENGTH 15
+uint8_t ble_USART_read_buffer[BLE_USART_READ_DATA_LENGTH];
+uint8_t ble_write_buffer[44];
 char SEND_LED_CHARS = 0;
-
-
-///////////   VESC Communication Variables   ///////////
-////////////////////////////////////////////////////////
-int16_t battery_current = 0;
-int16_t battery_voltage = 0;
-int16_t motor_current = 0;
-int16_t vesc_temp = 0;
-int8_t duty_cycle = 0;
-uint8_t error_codes = 0;
-int32_t motor_rpm = 0;
-int32_t mAh_used = 0;
-int32_t mAh_charged = 0;
-int32_t Wh_used = 0;
-int32_t Wh_charged = 0;
-uint8_t battery_current_max = 30;
-uint8_t battery_current_min = -15;
-uint8_t absolute_max_current = 100;
-uint8_t battery_voltage_max = 48;
-uint8_t battery_voltage_min = 33;
-uint8_t voltage_cutoff_start = 36;
-uint8_t voltage_cutoff_end = 33;
-uint8_t motor_current_max = 60;
-uint8_t motor_current_min = -40;
-int motor_rpm_max = 100000;
-int motor_rpm_min = -100000;
-int max_rpm_full = 70000;
-int max_rpm_full_cc = 70000;
-uint8_t mosfet_temp_start = 88;
-uint8_t mosfet_temp_end = 85;
-uint8_t motor_temp_start = 90;
-uint8_t motor_temp_end = 89;
-uint8_t duty_cycle_max = 95;
-uint8_t duty_cycle_min = 5;
-
-int BLE_delay = 1000;
 
 
 /////////////////   Sensor Variables   /////////////////
@@ -128,7 +97,7 @@ float kalmanGZ_max = 350;
 
 // Kalman filter vars
 #define KalmanArraySize 7
-typedef enum {
+enum kalmans{
 	ax_kalman = 0,
 	ay_kalman = 1,
 	az_kalman = 2,
@@ -136,7 +105,7 @@ typedef enum {
 	gy_kalman = 4,
 	gz_kalman = 5,
 	light_kalman = 6
-} kalmans;
+};
 float err_measure[KalmanArraySize];
 float err_estimate[KalmanArraySize];
 float q[KalmanArraySize];
@@ -153,39 +122,77 @@ float gzKalman = 0;
 
 ////////////   BLE Communication Variables   ///////////
 ////////////////////////////////////////////////////////
-#define BLE_BAUD 38400
+#define BLE_BAUD 115200
 bool BLE_CONFIGURED = false; // Set monitor var to check if BLE is configured yet or not
 uint8_t RECIEVE_REMOTE = 0;
 uint8_t NEW_REMOTE_DATA = 0;
 uint8_t SEND_CONTINUOUS = 1;
-uint8_t SEND_LIMITS = 0;
 uint8_t FIRST_MESSAGE = 1;
-uint8_t GET_LIMITS = 0;
 uint8_t SEND_SENSORS = 0;
 uint8_t CAL_IMU = 0;
 uint8_t AppRemoteY = 128;
-bool SEND_ORIENTAION = 0;
-bool SEND_CONTROLS = 0;
+bool SEND_ORIENTAION_CONFIG = 0;
+bool SEND_CONTROLS_CONFIG = 0;
+bool SEND_REMOTE_CONFIG = 0;
+bool SEND_ESC_CONFIG = 0;
+bool OK_EXPECTED = 0;
+
+int BLE_delay = 1000;
+
+// Direct Commands
+// Settings Values
+// LED Values
+#define Read_Sensor_Vars		0xAC
+#define Calibrate_All			0xAD
+#define Remote_Data				0xBD
+#define Read_LED_Vars			0xCD
+#define Read_Motor_Limits		0xDD
+#define LED_Mode_Up				0xE1
+#define LED_Mode_Down			0xE2
+#define LED_Toggle				0xE3
+#define Read_Orientaion			0xFE
+#define Calibrate_Gyro			0x00
+#define Calibrate_Accel			0x00
+#define Calibrate_Light			0x00
+#define Read_Controls			0xFC
+#define Aux_Pressed				0xAA
+#define Aux_Released			0xAB
+#define Read_Remote_Config		0xFB
+#define Read_ESC_Config			0xFA
+#define Custom_Values			0xB1
+#define Y_Accel_Values			0xE6
+#define X_Accel_Values			0xE7
+#define RPM_Throttle			0xE8
+#define RPM_Values				0xE9
+#define Throttle_Values			0xEA
+#define Compass_Cycle_Values	0xEB
+#define Color_Cycle_Values		0xEC
+#define Static_Values			0xED
+#define Apply_Orientation		0xFD
+#define Apply_Control_Settings	0xC2
+#define Apply_Remote_Config		0xC3
+#define Apply_ESC_Config		0xC4
+#define End_of_Message			0xAE
 
 
 /////   Function Definitions and System Structs   //////
 ////////////////////////////////////////////////////////
 struct i2c_slave_module i2c_slave_instance;
 struct adc_module adc1;
-struct usart_module usart_instance;
+struct usart_module ble_usart;
 
 // Initialization functions
 void configure_ADC(void);
 void configure_i2c_master(void);
 void configure_port_pins(void);
-void configure_BLE_usart(void);
-void configure_usart(int baud);
+void configure_BLE_module(void);
+void configure_ble_usart(int baud);
 void configure_i2c_slave(void);
 void number_to_string(uint32_t, char *);
 void configure_i2c_slave_callbacks(void);
 void i2c_write_request_callback(struct i2c_slave_module *const module);
 void initKalman(float meas, float est, float _q);
-void usart_read_callback(struct usart_module *const usart_module);
+void ble_usart_read_callback(struct usart_module *const usart_module);
 void configure_BLE_usart_callbacks(void);
 void i2c_read_request_callback(struct i2c_slave_module *const module);
 void configure_eeprom(void);
@@ -205,221 +212,307 @@ float getPitch(void);
 float updateKalman(float meas, int kalmanIndex);
 
 
-int usart_count = 0;
-uint8_t BLE_MSG[USART_READ_DATA_LENGTH];
+int ble_usart_count = 0;
+uint8_t BLE_MSG[BLE_USART_READ_DATA_LENGTH];
 // The callback routine for when a BLE message is recieved
-void usart_read_callback(struct usart_module *const usart_module)
+void ble_usart_read_callback(struct usart_module *const usart_module)
 {
-	usart_count++;
+	ble_usart_count++;
 
-	if(usart_count < USART_READ_DATA_LENGTH)
-		BLE_MSG[usart_count-1] = USART_read_buffer[0];
+	if(ble_usart_count < BLE_USART_READ_DATA_LENGTH)
+		BLE_MSG[ble_usart_count-1] = ble_USART_read_buffer[0];
 	else
 		ERROR_LEDs(1);
 
-	usart_read_buffer_job(&usart_instance, (uint8_t *)USART_read_buffer, (uint16_t)1);
-	if(USART_read_buffer[0] == 0xAE){
-		switch(usart_count){
+		
+
+	usart_read_buffer_job(&ble_usart, (uint8_t *)ble_USART_read_buffer, (uint16_t)1);
+	if(ble_USART_read_buffer[0] == 0xAE){ //switch the message length
+		bool MESSAGE_HANDLED = false;
+		switch(ble_usart_count){
 			case 2:
-				if(BLE_MSG[0] == 0xDD){
-					GET_LIMITS = 1;
-				} else if(BLE_MSG[0] == 0xCD){
-					SEND_LED_CHARS = 1;
-					SEND_CONTINUOUS = 0;
-				} else if(BLE_MSG[0] == 0xAD){
-					_autoCalc = false; // Workaround so that calibrate doesnt include the current offset
-					calibrate(true);
-					save_cal_data();
-				} else if(BLE_MSG[0] == 0xAC){
-					SEND_SENSORS = 1;
-					SEND_CONTINUOUS = 0;
-				} else if(BLE_MSG[0] == 0xE3){
-					LIGHTS_ON = !LIGHTS_ON;
-					save_led_data();
-				} else if(BLE_MSG[0] == 0xE2){
-					if(light_mode > 0)
-					light_mode--;
-					save_led_data();
-				} else if(BLE_MSG[0] == 0xE1){
-					if(light_mode < light_modes)
-					light_mode++;
-					save_led_data();
-				} else if(BLE_MSG[0] == 0xFE){
-					SEND_ORIENTAION = 1;
-					SEND_CONTINUOUS = 0;
-				} else if(BLE_MSG[0] == 0xFC){
-					SEND_CONTROLS = 1;
-					SEND_CONTINUOUS = 0;
-				} else if(BLE_MSG[0] == 0xAA){
-					LIGHTS_ON = true;
-					AppAuxButton = 1;
-				} else if(BLE_MSG[0] == 0xAB){
-					LIGHTS_ON = false;
-					AppAuxButton = 0;
-				}
-			break;
+				switch(BLE_MSG[0]){ //switch the message ID
+					case Read_Motor_Limits:
+						GET_LIMITS = 1;
+						SEND_CONTINUOUS = 0;
+						MESSAGE_HANDLED = true;
+						break;
+					case (int)Read_LED_Vars:
+						SEND_LED_CHARS = 1;
+						SEND_CONTINUOUS = 0;
+						MESSAGE_HANDLED = true;
+						break;
+					case Calibrate_All:
+						_autoCalc = false; // Workaround so that calibrate doesnt include the current offset
+						calibrate(true);
+						save_cal_data();
+						MESSAGE_HANDLED = true;
+						break;
+					case Read_Sensor_Vars:
+						SEND_SENSORS = 1;
+						SEND_CONTINUOUS = 0;
+						MESSAGE_HANDLED = true;
+						break;
+					case LED_Toggle:
+						LIGHTS_ON = !LIGHTS_ON;
+						save_led_data();
+						MESSAGE_HANDLED = true;
+						break;
+					case LED_Mode_Down:
+						if(light_mode > 0)
+						light_mode--;
+						save_led_data();
+						MESSAGE_HANDLED = true;
+						break;
+					case LED_Mode_Up:
+						if(light_mode < light_modes)
+						light_mode++;
+						save_led_data();
+						MESSAGE_HANDLED = true;
+						break;
+					case Read_Orientaion:
+						SEND_ORIENTAION_CONFIG = 1;
+						SEND_CONTINUOUS = 0;
+						MESSAGE_HANDLED = true;
+						break;
+					case Read_Controls:
+						SEND_CONTROLS_CONFIG = 1;
+						SEND_CONTINUOUS = 0;
+						MESSAGE_HANDLED = true;
+						break;
+					case Read_Remote_Config:
+						SEND_REMOTE_CONFIG = 1;
+						SEND_CONTINUOUS = 0;
+						MESSAGE_HANDLED = true;
+						break;
+					case Read_ESC_Config:
+						SEND_ESC_CONFIG = 1;
+						SEND_CONTINUOUS = 0;
+						MESSAGE_HANDLED = true;
+						break;
+					case Aux_Pressed:
+						LIGHTS_ON = true;
+						AppAuxButton = 1;
+						MESSAGE_HANDLED = true;
+						break;
+					case Aux_Released:
+						LIGHTS_ON = false;
+						AppAuxButton = 0;
+						MESSAGE_HANDLED = true;
+						break;
+				}//*/
+				break;
 			case 3:
-				if(BLE_MSG[0] == 0xBD){
-					AppRemoteY = (BLE_MSG[1] & 0x0FF);
-					NEW_REMOTE_DATA = 1;
-				}
-				if(BLE_MSG[0] == 0xE8){
-					LIGHTS_ON = 1;
-					light_mode = MODE_RPM_THROTTLE;
-					SWITCHES = BLE_MSG[1];
-					SIDELIGHTS = (SWITCHES & 0x10) >> 4;
-					HEADLIGHTS = (SWITCHES & 0x20) >> 5;
-					LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
-					IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-					save_led_data();
-				}
-			break;
+				switch(BLE_MSG[0]){
+					case Remote_Data:
+						AppRemoteY = (BLE_MSG[1] & 0x0FF);
+						NEW_REMOTE_DATA = 1;
+						MESSAGE_HANDLED = true;
+						break;
+					case RPM_Throttle:
+						LIGHTS_ON = 1;
+						light_mode = MODE_RPM_THROTTLE;
+						SWITCHES = BLE_MSG[1];
+						SIDELIGHTS = (SWITCHES & 0x10) >> 4;
+						HEADLIGHTS = (SWITCHES & 0x20) >> 5;
+						LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
+						IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
+						save_led_data();
+						MESSAGE_HANDLED = true;
+						break;
+				}//*/
+				break;
 			case 4:
-				if(BLE_MSG[0] == 0xEB){
-					LIGHTS_ON = 1;
-					light_mode = MODE_COMPASS_CYCLE;
-					SWITCHES = BLE_MSG[1];
-					SIDELIGHTS = (SWITCHES & 0x10) >> 4;
-					HEADLIGHTS = (SWITCHES & 0x20) >> 5;
-					LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
-					IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-					Brightness[MODE_COMPASS_CYCLE] = ((float)(BLE_MSG[2]))/100;
-					save_led_data();
-				} else if(BLE_MSG[0] == 0xE9){
-					LIGHTS_ON = 1;
-					light_mode = MODE_RPM_CYCLE;
-					SWITCHES = BLE_MSG[1];
-					SIDELIGHTS = (SWITCHES & 0x10) >> 4;
-					HEADLIGHTS = (SWITCHES & 0x20) >> 5;
-					LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
-					IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-					RateSens[MODE_RPM_CYCLE] = ((float)(BLE_MSG[2]))/100;
-					save_led_data();
-				} else if(BLE_MSG[0] == 0xE7){
-					LIGHTS_ON = 1;
-					light_mode = MODE_X_ACCEL;
-					SWITCHES = BLE_MSG[1];
-					SIDELIGHTS = (SWITCHES & 0x10) >> 4;
-					HEADLIGHTS = (SWITCHES & 0x20) >> 5;
-					LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
-					IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-					RateSens[MODE_X_ACCEL] = ((float)(BLE_MSG[2]))/100;
-					save_led_data();
-				} else if(BLE_MSG[0] == 0xE6){
-					LIGHTS_ON = 1;
-					light_mode = MODE_Y_ACCEL;
-					SWITCHES = BLE_MSG[1];
-					SIDELIGHTS = (SWITCHES & 0x10) >> 4;
-					HEADLIGHTS = (SWITCHES & 0x20) >> 5;
-					LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
-					IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-					RateSens[MODE_Y_ACCEL] = ((float)(BLE_MSG[2]))/100;
-					save_led_data();
-				} else if(BLE_MSG[0] == 0xFD){
-					ORIENTATION[0] = BLE_MSG[1];
-					ORIENTATION[1] = BLE_MSG[2];
-					save_orientation_controls();
-				}
-			break;
+				switch(BLE_MSG[0]){
+					case Compass_Cycle_Values:
+						LIGHTS_ON = 1;
+						light_mode = MODE_COMPASS_CYCLE;
+						SWITCHES = BLE_MSG[1];
+						SIDELIGHTS = (SWITCHES & 0x10) >> 4;
+						HEADLIGHTS = (SWITCHES & 0x20) >> 5;
+						LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
+						IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
+						Brightness[MODE_COMPASS_CYCLE] = ((float)(BLE_MSG[2]))/100;
+						save_led_data();
+						MESSAGE_HANDLED = true;
+						break;
+					case RPM_Values:
+						LIGHTS_ON = 1;
+						light_mode = MODE_RPM_CYCLE;
+						SWITCHES = BLE_MSG[1];
+						SIDELIGHTS = (SWITCHES & 0x10) >> 4;
+						HEADLIGHTS = (SWITCHES & 0x20) >> 5;
+						LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
+						IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
+						RateSens[MODE_RPM_CYCLE] = ((float)(BLE_MSG[2]))/100;
+						save_led_data();
+						MESSAGE_HANDLED = true;
+						break;
+					case X_Accel_Values:
+						LIGHTS_ON = 1;
+						light_mode = MODE_X_ACCEL;
+						SWITCHES = BLE_MSG[1];
+						SIDELIGHTS = (SWITCHES & 0x10) >> 4;
+						HEADLIGHTS = (SWITCHES & 0x20) >> 5;
+						LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
+						IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
+						RateSens[MODE_X_ACCEL] = ((float)(BLE_MSG[2]))/100;
+						save_led_data();
+						MESSAGE_HANDLED = true;
+						break;
+					case Y_Accel_Values:
+						LIGHTS_ON = 1;
+						light_mode = MODE_Y_ACCEL;
+						SWITCHES = BLE_MSG[1];
+						SIDELIGHTS = (SWITCHES & 0x10) >> 4;
+						HEADLIGHTS = (SWITCHES & 0x20) >> 5;
+						LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
+						IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
+						Brightness[MODE_Y_ACCEL] = ((float)(BLE_MSG[2]))/100;
+						save_led_data();
+						MESSAGE_HANDLED = true;
+						break;
+					case Apply_Orientation:
+						ORIENTATION[0] = BLE_MSG[1];
+						ORIENTATION[1] = BLE_MSG[2];
+						save_orientation_controls_remote_esc();
+						MESSAGE_HANDLED = true;
+						break;
+					case Apply_Remote_Config:
+						remote_type = (BLE_MSG[1]&0x0F0)>>4;
+						button_type = (BLE_MSG[1]&0x0F);
+						deadzone = BLE_MSG[2];
+						save_orientation_controls_remote_esc();
+						MESSAGE_HANDLED = true;
+						break;
+					case Apply_ESC_Config:
+						esc_fw = BLE_MSG[1];
+						esc_comms = (BLE_MSG[2]&0x0F0)>>4;
+						UART_baud = (BLE_MSG[2]&0x0F);
+						save_orientation_controls_remote_esc();
+						MESSAGE_HANDLED = true;
+						configured_comms = esc_comms;
+						break;
+				}//*/
+				break;
 			case 5:
-				if(BLE_MSG[0] == 0xEC){
-					LIGHTS_ON = 1;
-					light_mode = MODE_COLOR_CYCLE;
-					SWITCHES = BLE_MSG[1];
-					SIDELIGHTS = (SWITCHES & 0x10) >> 4;
-					HEADLIGHTS = (SWITCHES & 0x20) >> 5;
-					LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
-					IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-					RateSens[MODE_COLOR_CYCLE] = ((float)(BLE_MSG[2]))/100;
-					Brightness[MODE_COLOR_CYCLE] = ((float)(BLE_MSG[3]))/100;
-					save_led_data();
-				} else if(BLE_MSG[0] == 0xEA){
-					LIGHTS_ON = 1;
-					light_mode = MODE_THROTTLE;
-					SWITCHES = BLE_MSG[1];
-					SIDELIGHTS = (SWITCHES & 0x10) >> 4;
-					HEADLIGHTS = (SWITCHES & 0x20) >> 5;
-					LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
-					IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-					RateSens[MODE_THROTTLE] = ((float)(BLE_MSG[2]))/100;
-					Brightness[MODE_THROTTLE] = ((float)(BLE_MSG[3]))/100;
-					save_led_data();
+				switch(BLE_MSG[0]){
+					case Color_Cycle_Values:
+						LIGHTS_ON = 1;
+						light_mode = MODE_COLOR_CYCLE;
+						SWITCHES = BLE_MSG[1];
+						SIDELIGHTS = (SWITCHES & 0x10) >> 4;
+						HEADLIGHTS = (SWITCHES & 0x20) >> 5;
+						LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
+						IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
+						RateSens[MODE_COLOR_CYCLE] = ((float)(BLE_MSG[2]))/100;
+						Brightness[MODE_COLOR_CYCLE] = ((float)(BLE_MSG[3]))/100;
+						save_led_data();
+						MESSAGE_HANDLED = true;
+						break;
+					case Throttle_Values:
+						LIGHTS_ON = 1;
+						light_mode = MODE_THROTTLE;
+						SWITCHES = BLE_MSG[1];
+						SIDELIGHTS = (SWITCHES & 0x10) >> 4;
+						HEADLIGHTS = (SWITCHES & 0x20) >> 5;
+						LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
+						IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
+						RateSens[MODE_THROTTLE] = ((float)(BLE_MSG[2]))/100;
+						Brightness[MODE_THROTTLE] = ((float)(BLE_MSG[3]))/100;
+						save_led_data();
+						MESSAGE_HANDLED = true;
+						break;
 				}
-			break;
+				break;
 			case 9:
-				if(BLE_MSG[0] == 0xED){
-					LIGHTS_ON = 1;
-					light_mode = MODE_STATIC;
-					SWITCHES = BLE_MSG[1];
-					SIDELIGHTS = (SWITCHES & 0x10) >> 4;
-					HEADLIGHTS = (SWITCHES & 0x20) >> 5;
-					LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
-					IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-					Static_RGB.LR = (uint16_t)((float)BLE_MSG[2] * 257);
-					Static_RGB.LG = (uint16_t)((float)BLE_MSG[3] * 257);
-					Static_RGB.LB = (uint16_t)((float)BLE_MSG[4] * 257);
-					Static_RGB.RR = (uint16_t)((float)BLE_MSG[5] * 257);
-					Static_RGB.RG = (uint16_t)((float)BLE_MSG[6] * 257);
-					Static_RGB.RB = (uint16_t)((float)BLE_MSG[7] * 257);
-					save_led_data();
-				}
-			break;
+				switch(BLE_MSG[0]){
+					case Static_Values:
+						LIGHTS_ON = 1;
+						light_mode = MODE_STATIC;
+						SWITCHES = BLE_MSG[1];
+						SIDELIGHTS = (SWITCHES & 0x10) >> 4;
+						HEADLIGHTS = (SWITCHES & 0x20) >> 5;
+						LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
+						IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
+						Static_RGB.LR = (uint16_t)((float)BLE_MSG[2] * 257);
+						Static_RGB.LG = (uint16_t)((float)BLE_MSG[3] * 257);
+						Static_RGB.LB = (uint16_t)((float)BLE_MSG[4] * 257);
+						Static_RGB.RR = (uint16_t)((float)BLE_MSG[5] * 257);
+						Static_RGB.RG = (uint16_t)((float)BLE_MSG[6] * 257);
+						Static_RGB.RB = (uint16_t)((float)BLE_MSG[7] * 257);
+						save_led_data();
+						MESSAGE_HANDLED = true;
+						break;
+				}//*/
+				break;
 			case 10:
-				if(BLE_MSG[0] == 0xC2){
-					AUX_ENABLED = (BLE_MSG[1]&0x80)>>7;
-					TURN_ENABLED = (BLE_MSG[1]&0x40)>>6;
-					auxControlType = (BLE_MSG[1]&0x0F);
-					auxTimedDuration = (BLE_MSG[2]&0xFF);
-					single_aux_control = (BLE_MSG[3]&0xF0)>>4;
-					single_all_control = (BLE_MSG[3]&0x0F);
-					single_head_control = (BLE_MSG[4]&0xF0)>>4;
-					single_side_control = (BLE_MSG[4]&0x0F);
-					single_down_control = (BLE_MSG[5]&0xF0)>>4;
-					single_up_control = (BLE_MSG[5]&0x0F);
-					dual_aux_control = (BLE_MSG[6]&0xF0)>>4;
-					dual_all_control = (BLE_MSG[6]&0x0F);
-					dual_head_control = (BLE_MSG[7]&0xF0)>>4;
-					dual_side_control = (BLE_MSG[7]&0x0F);
-					dual_down_control = (BLE_MSG[8]&0xF0)>>4;
-					dual_up_control = (BLE_MSG[8]&0x0F);
-					save_orientation_controls();
-				}
-			break;
+				switch(BLE_MSG[0]){
+					case Apply_Control_Settings:
+						AUX_ENABLED = (BLE_MSG[1]&0x80)>>7;
+						TURN_ENABLED = (BLE_MSG[1]&0x40)>>6;
+						auxControlType = (BLE_MSG[1]&0x0F);
+						auxTimedDuration = (BLE_MSG[2]&0xFF);
+						single_aux_control = (BLE_MSG[3]&0xF0)>>4;
+						single_all_control = (BLE_MSG[3]&0x0F);
+						single_head_control = (BLE_MSG[4]&0xF0)>>4;
+						single_side_control = (BLE_MSG[4]&0x0F);
+						single_down_control = (BLE_MSG[5]&0xF0)>>4;
+						single_up_control = (BLE_MSG[5]&0x0F);
+						dual_aux_control = (BLE_MSG[6]&0xF0)>>4;
+						dual_all_control = (BLE_MSG[6]&0x0F);
+						dual_head_control = (BLE_MSG[7]&0xF0)>>4;
+						dual_side_control = (BLE_MSG[7]&0x0F);
+						dual_down_control = (BLE_MSG[8]&0xF0)>>4;
+						dual_up_control = (BLE_MSG[8]&0x0F);
+						save_orientation_controls_remote_esc();
+						MESSAGE_HANDLED = true;
+						break;
+				}//*/
+				break;
 			case 12:
-				if(BLE_MSG[0] == 0xB1){
-					LIGHTS_ON = 1;
-					light_mode = MODE_CUSTOM;
-					SWITCHES = BLE_MSG[1];
-					SIDELIGHTS = (SWITCHES & 0x10) >> 4;
-					HEADLIGHTS = (SWITCHES & 0x20) >> 5;
-					LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
-					IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-					ColorBase[MODE_CUSTOM] = (SWITCHES & 0x0F);
-					RateBase[MODE_CUSTOM] = (BLE_MSG[2] & 0xF0) >> 4;
-					BrightBase[MODE_CUSTOM] = (BLE_MSG[2] & 0x0F);
-					Custom_RGB.LR = (uint16_t)((float)BLE_MSG[3] * 257);
-					Custom_RGB.LG = (uint16_t)((float)BLE_MSG[4] * 257);
-					Custom_RGB.LB = (uint16_t)((float)BLE_MSG[5] * 257);
-					Custom_RGB.RR = (uint16_t)((float)BLE_MSG[6] * 257);
-					Custom_RGB.RG = (uint16_t)((float)BLE_MSG[7] * 257);
-					Custom_RGB.RB = (uint16_t)((float)BLE_MSG[8] * 257);
-					RateSens[MODE_CUSTOM] = ((float)(BLE_MSG[9]))/100;
-					Brightness[MODE_CUSTOM] = ((float)(BLE_MSG[10]))/100;
-					save_led_data();
-				}
-			break;
+				switch(BLE_MSG[0]){
+					case Custom_Values:
+						LIGHTS_ON = 1;
+						light_mode = MODE_CUSTOM;
+						SWITCHES = BLE_MSG[1];
+						SIDELIGHTS = (SWITCHES & 0x10) >> 4;
+						HEADLIGHTS = (SWITCHES & 0x20) >> 5;
+						LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
+						IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
+						ColorBase[MODE_CUSTOM] = (SWITCHES & 0x0F);
+						RateBase[MODE_CUSTOM] = (BLE_MSG[2] & 0xF0) >> 4;
+						BrightBase[MODE_CUSTOM] = (BLE_MSG[2] & 0x0F);
+						Custom_RGB.LR = (uint16_t)((float)BLE_MSG[3] * 257);
+						Custom_RGB.LG = (uint16_t)((float)BLE_MSG[4] * 257);
+						Custom_RGB.LB = (uint16_t)((float)BLE_MSG[5] * 257);
+						Custom_RGB.RR = (uint16_t)((float)BLE_MSG[6] * 257);
+						Custom_RGB.RG = (uint16_t)((float)BLE_MSG[7] * 257);
+						Custom_RGB.RB = (uint16_t)((float)BLE_MSG[8] * 257);
+						RateSens[MODE_CUSTOM] = ((float)(BLE_MSG[9]))/100;
+						Brightness[MODE_CUSTOM] = ((float)(BLE_MSG[10]))/100;
+						save_led_data();
+						MESSAGE_HANDLED = true;
+						break;
+				}//*/
+				break;
 		}
-		usart_count = 0;
+		if(MESSAGE_HANDLED || (BLE_MSG[0] == 'O' && BLE_MSG[1] == 'K')) // Check that the message was handled to avoid interrupting a message containing 
+			ble_usart_count = 0;
 	}
-	else if(BLE_MSG[usart_count-3] == 'O' && BLE_MSG[usart_count-2] == 'K' &&USART_read_buffer[0] == '+')
+	else if(BLE_MSG[ble_usart_count-3] == 'O' && BLE_MSG[ble_usart_count-2] == 'K' && ble_USART_read_buffer[0] == '+' && OK_EXPECTED)
 	{
 		BLE_CONFIGURED = true;
-		usart_count = 0;
+		OK_EXPECTED = false;
+		ble_usart_count = 0;
+	} else if((BLE_MSG[ble_usart_count-7] == 'O' && BLE_MSG[ble_usart_count-6] == 'K' && BLE_MSG[ble_usart_count-5] == '+' && BLE_MSG[ble_usart_count-4] == 'C' && BLE_MSG[ble_usart_count-3] == 'O' && BLE_MSG[ble_usart_count-2] == 'N' && BLE_MSG[ble_usart_count-1] == 'N') ||
+				(BLE_MSG[ble_usart_count-8] == 'O' && BLE_MSG[ble_usart_count-7] == 'K' && BLE_MSG[ble_usart_count-6] == '+' && BLE_MSG[ble_usart_count-5] == 'R' && BLE_MSG[ble_usart_count-4] == 'E' && BLE_MSG[ble_usart_count-3] == 'S' && BLE_MSG[ble_usart_count-2] == 'E' && BLE_MSG[ble_usart_count-1] == 'T')){
+		ble_usart_count = 0;
 	}
 }
 
 // Configure SERCOM5 as USART for BLE module
-void configure_usart(int baud)
+void configure_ble_usart(int baud)
 {
 	struct usart_config config_usart;
 	usart_get_config_defaults(&config_usart);
@@ -429,19 +522,19 @@ void configure_usart(int baud)
 	config_usart.pinmux_pad1 = PINMUX_UNUSED;
 	config_usart.pinmux_pad2 = PINMUX_PA20C_SERCOM5_PAD2;
 	config_usart.pinmux_pad3 = PINMUX_PA21C_SERCOM5_PAD3;
-	while (usart_init(&usart_instance,SERCOM5, &config_usart) != STATUS_OK)
+	while (usart_init(&ble_usart,SERCOM5, &config_usart) != STATUS_OK)
 	{}
-	usart_enable(&usart_instance);
+	usart_enable(&ble_usart);
 }
 
-void configure_BLE_usart()
+void configure_BLE_module()
 {
 	int baud = 0;
 	int bauds[5] = {9600, 19200, 38400, 57600, 115200};
 	while(1){
-		configure_usart(bauds[baud]);
+		configure_ble_usart(bauds[baud]);
 		configure_BLE_usart_callbacks();
-		usart_read_buffer_job(&usart_instance, (uint8_t *)USART_read_buffer, (uint16_t)1);
+		usart_read_buffer_job(&ble_usart, (uint8_t *)ble_USART_read_buffer, (uint16_t)1);
 
 		baud += 1;
 		if(baud > 4)
@@ -459,34 +552,37 @@ void configure_BLE_usart()
 			strcpy(string1,"AT+BAUD3");
 		else if(BLE_BAUD == 115200)
 			strcpy(string1,"AT+BAUD4");
-		while(usart_write_buffer_wait(&usart_instance, string1, sizeof(string1))!=STATUS_OK){}
+		OK_EXPECTED = true;
+		while(usart_write_buffer_wait(&ble_usart, string1, sizeof(string1))!=STATUS_OK){}
 		for(int i = 0; i < 25000; ++i);
 		
+		OK_EXPECTED = true;
 		uint8_t string2[14] = "AT+NAMETelTail";
-		while(usart_write_buffer_wait(&usart_instance, string2, sizeof(string2))!=STATUS_OK){}
+		while(usart_write_buffer_wait(&ble_usart, string2, sizeof(string2))!=STATUS_OK){}
 		for(int i = 0; i < 25000; ++i);
 		
+		OK_EXPECTED = true;
 		uint8_t string3[8] = "AT+POWE3"; // Default = 2
-		while(usart_write_buffer_wait(&usart_instance, string3, sizeof(string3))!=STATUS_OK){}
+		while(usart_write_buffer_wait(&ble_usart, string3, sizeof(string3))!=STATUS_OK){}
 		for(int i = 0; i < 25000; ++i);
 		
 		if(!BLE_CONFIGURED){
-			usart_disable(&usart_instance);
+			usart_disable(&ble_usart);
 			for(int i = 0; i < 10000; ++i);
 		}
 		else{
 			uint8_t string4[8] = "AT+RESET";
-			while(usart_write_buffer_wait(&usart_instance, string4, sizeof(string4))!=STATUS_OK){}
+			while(usart_write_buffer_wait(&ble_usart, string4, sizeof(string4))!=STATUS_OK){}
 			for(int i = 0; i < 25000; ++i);
-			usart_disable(&usart_instance);
+			usart_disable(&ble_usart);
 			for(int i = 0; i < 500000; ++i);
-			configure_usart(BLE_BAUD);
+			configure_ble_usart(BLE_BAUD);
 			for(int i = 0; i < 5000; ++i);
 			uint8_t string5[2] = "AT";
-			while(usart_write_buffer_wait(&usart_instance, string5, sizeof(string5))!=STATUS_OK){}
+			while(usart_write_buffer_wait(&ble_usart, string5, sizeof(string5))!=STATUS_OK){}
 			for(int i = 0; i < 10000; ++i);
 			configure_BLE_usart_callbacks();
-			usart_read_buffer_job(&usart_instance, (uint8_t *)USART_read_buffer, (uint16_t)1);
+			usart_read_buffer_job(&ble_usart, (uint8_t *)ble_USART_read_buffer, (uint16_t)1);
 			break;
 		}
 	}
@@ -495,8 +591,8 @@ void configure_BLE_usart()
 // Configure SERCOM callback for recieving a buffer frame
 void configure_BLE_usart_callbacks(void)
 {
-	usart_register_callback(&usart_instance, usart_read_callback, USART_CALLBACK_BUFFER_RECEIVED);
-	usart_enable_callback(&usart_instance, USART_CALLBACK_BUFFER_RECEIVED);
+	usart_register_callback(&ble_usart, ble_usart_read_callback, USART_CALLBACK_BUFFER_RECEIVED);
+	usart_enable_callback(&ble_usart, USART_CALLBACK_BUFFER_RECEIVED);
 }
 
 // Configure the light sensor port as an input
@@ -528,7 +624,7 @@ void configure_port_pins(void)
 	
 	config_port_pin.powersave = false;
 	config_port_pin.direction = PORT_PIN_DIR_INPUT;
-	config_port_pin.input_pull = PORT_PIN_PULL_NONE;
+	config_port_pin.input_pull = PORT_PIN_PULL_UP;
 	port_pin_set_config(PPM_IN, &config_port_pin);
 	
 	config_port_pin.powersave = false;
@@ -588,56 +684,53 @@ void i2c_write_request_callback(struct i2c_slave_module *const module)
 	}
 	i2c_slave_read_packet_job(module, &packet);
 		if(I2C_slave_read_buffer[0] == 0x8D && I2C_slave_read_buffer[28] == 0xAD) {
-			motor_current_max = I2C_slave_read_buffer[1];
-			motor_current_min = I2C_slave_read_buffer[2];
-			battery_current_max = I2C_slave_read_buffer[3];
-			battery_current_min = I2C_slave_read_buffer[4];
-			absolute_max_current = I2C_slave_read_buffer[5];
-			battery_voltage_max = I2C_slave_read_buffer[6];
-			battery_voltage_min = I2C_slave_read_buffer[7];
-			voltage_cutoff_start = I2C_slave_read_buffer[8];
-			voltage_cutoff_end = I2C_slave_read_buffer[9];
-			motor_rpm_max = (I2C_slave_read_buffer[10] | (I2C_slave_read_buffer[11] << 8) | (I2C_slave_read_buffer[12] << 16));
-			motor_rpm_min = (I2C_slave_read_buffer[13] | (I2C_slave_read_buffer[14] << 8) | (I2C_slave_read_buffer[15] << 16));
-			max_rpm_full = (I2C_slave_read_buffer[16] | (I2C_slave_read_buffer[17] << 8) | (I2C_slave_read_buffer[18] << 16));
-			max_rpm_full_cc = (I2C_slave_read_buffer[19] | (I2C_slave_read_buffer[20] << 8) | (I2C_slave_read_buffer[21] << 16));
-			mosfet_temp_start = I2C_slave_read_buffer[22];
-			mosfet_temp_end = I2C_slave_read_buffer[23];
-			motor_temp_start = I2C_slave_read_buffer[24];
-			motor_temp_end = I2C_slave_read_buffer[25];
-			duty_cycle_max = I2C_slave_read_buffer[26];
-			duty_cycle_min = I2C_slave_read_buffer[27];
+			mcconf_limits.motor_current_max = I2C_slave_read_buffer[1];
+			mcconf_limits.motor_current_min = I2C_slave_read_buffer[2];
+			mcconf_limits.input_current_max = I2C_slave_read_buffer[3];
+			mcconf_limits.input_current_min = I2C_slave_read_buffer[4];
+			mcconf_limits.abs_current_max = I2C_slave_read_buffer[5];
+			mcconf_limits.max_vin = I2C_slave_read_buffer[6];
+			mcconf_limits.min_vin = I2C_slave_read_buffer[7];
+			mcconf_limits.battery_cut_start = I2C_slave_read_buffer[8];
+			mcconf_limits.battery_cut_end = I2C_slave_read_buffer[9];
+			mcconf_limits.max_erpm = (I2C_slave_read_buffer[10] | (I2C_slave_read_buffer[11] << 8) | (I2C_slave_read_buffer[12] << 16));
+			mcconf_limits.min_erpm = (I2C_slave_read_buffer[13] | (I2C_slave_read_buffer[14] << 8) | (I2C_slave_read_buffer[15] << 16));
+			mcconf_limits.max_erpm_fbrake = (I2C_slave_read_buffer[16] | (I2C_slave_read_buffer[17] << 8) | (I2C_slave_read_buffer[18] << 16));
+			mcconf_limits.max_erpm_fbrake_cc = (I2C_slave_read_buffer[19] | (I2C_slave_read_buffer[20] << 8) | (I2C_slave_read_buffer[21] << 16));
+			mcconf_limits.temp_fet_start = I2C_slave_read_buffer[22];
+			mcconf_limits.temp_fet_end = I2C_slave_read_buffer[23];
+			mcconf_limits.temp_motor_start = I2C_slave_read_buffer[24];
+			mcconf_limits.temp_motor_end = I2C_slave_read_buffer[25];
+			mcconf_limits.max_duty = I2C_slave_read_buffer[26];
+			mcconf_limits.min_duty = I2C_slave_read_buffer[27];
 			SEND_LIMITS = 1;
 			SEND_CONTINUOUS = 0;
 		} else if(I2C_slave_read_buffer[0] == 0xDD && I2C_slave_read_buffer[29] == 0xAD) {
-			battery_current = I2C_slave_read_buffer[1];
-			battery_current += (I2C_slave_read_buffer[2] << 8);
-			battery_voltage = I2C_slave_read_buffer[3];
-			battery_voltage += (I2C_slave_read_buffer[4] << 8);
-			motor_current = I2C_slave_read_buffer[5];
-			motor_current += (I2C_slave_read_buffer[6] << 8);
-			vesc_temp = I2C_slave_read_buffer[7];
-			vesc_temp += (I2C_slave_read_buffer[8] << 8);
-			duty_cycle = I2C_slave_read_buffer[9];
-			motor_rpm = (I2C_slave_read_buffer[10] | (I2C_slave_read_buffer[11] << 8) | (I2C_slave_read_buffer[12] << 16));
-			mAh_used = (I2C_slave_read_buffer[13] | (I2C_slave_read_buffer[14] << 8) | (I2C_slave_read_buffer[15] << 16));
-			mAh_charged = (I2C_slave_read_buffer[16] | (I2C_slave_read_buffer[17] << 8) | (I2C_slave_read_buffer[18] << 16));
-			Wh_used = (I2C_slave_read_buffer[19] | (I2C_slave_read_buffer[20] << 8) | (I2C_slave_read_buffer[21] << 16));
-			Wh_charged = (I2C_slave_read_buffer[22] | (I2C_slave_read_buffer[23] << 8) | (I2C_slave_read_buffer[24] << 16));
-			VescRemoteX = I2C_slave_read_buffer[25];
-			VescRemoteY = I2C_slave_read_buffer[26];
-			REMOTE_TYPE = (I2C_slave_read_buffer[27] & 0x6) >> 1;
-			VescRemoteButton = I2C_slave_read_buffer[27] & 0x1;
-			error_codes = I2C_slave_read_buffer[28];
+			latest_vesc_vals.avg_input_current = I2C_slave_read_buffer[1];
+			latest_vesc_vals.avg_input_current += (I2C_slave_read_buffer[2] << 8);
+			latest_vesc_vals.INPUT_VOLTAGE = I2C_slave_read_buffer[3];
+			latest_vesc_vals.INPUT_VOLTAGE += (I2C_slave_read_buffer[4] << 8);
+			latest_vesc_vals.avg_motor_current = I2C_slave_read_buffer[5];
+			latest_vesc_vals.avg_motor_current += (I2C_slave_read_buffer[6] << 8);
+			latest_vesc_vals.temp_fet_filtered = I2C_slave_read_buffer[7];
+			latest_vesc_vals.temp_fet_filtered += (I2C_slave_read_buffer[8] << 8);
+			latest_vesc_vals.duty_cycle = I2C_slave_read_buffer[9];
+			latest_vesc_vals.rpm = (I2C_slave_read_buffer[10] | (I2C_slave_read_buffer[11] << 8) | (I2C_slave_read_buffer[12] << 16));
+			latest_vesc_vals.amp_hours = (I2C_slave_read_buffer[13] | (I2C_slave_read_buffer[14] << 8) | (I2C_slave_read_buffer[15] << 16));
+			latest_vesc_vals.amp_hours_charged = (I2C_slave_read_buffer[16] | (I2C_slave_read_buffer[17] << 8) | (I2C_slave_read_buffer[18] << 16));
+			latest_vesc_vals.watt_hours = (I2C_slave_read_buffer[19] | (I2C_slave_read_buffer[20] << 8) | (I2C_slave_read_buffer[21] << 16));
+			latest_vesc_vals.watt_hours_charged = (I2C_slave_read_buffer[22] | (I2C_slave_read_buffer[23] << 8) | (I2C_slave_read_buffer[24] << 16));
+			remote_x = I2C_slave_read_buffer[25];
+			remote_y = I2C_slave_read_buffer[26];
+			remote_type = (I2C_slave_read_buffer[27] & 0x6) >> 1; // needs to change to conform with new use of remote_type
+			remote_btn_state = I2C_slave_read_buffer[27] & 0x1;
+			latest_vesc_vals.fault = I2C_slave_read_buffer[28];
 		}
 }
 
 uint8_t app_remote_check = 0;
 void i2c_read_request_callback(struct i2c_slave_module *const module)
 {
-	static long request_count = 100;
-	static uint32_t requestTimer = 0;
-
 	I2C_slave_write_buffer[0] = AppRemoteY;
 	I2C_slave_write_buffer[1] = GET_LIMITS;
 	I2C_slave_write_buffer[2] = app_remote_check;
@@ -687,7 +780,6 @@ int main (void)
 {
 	system_init();
 	configure_tc(); // Configure millis timer
-	setConstBases();
 
 	
 	for(int i = 0; i < ACCELsamples; ++i){
@@ -712,15 +804,13 @@ int main (void)
 
 	// Initialize local variables used in main
 	for(int i = 0; i < 44; ++i){
-		send_buffer[i] = 0;
+		ble_write_buffer[i] = 0;
 	}
 	VescRemoteX = VescRemoteY = 128;
 
 	float heading = 0;
 	uint32_t headingTime = 0;
 	uint32_t lheadingTime = 0;
-
-	bool lPPM_btn = 0;
 
 	int BLE_TX_INDEX = 0;
 	uint16_t BLE_TX_DELAY = 15;
@@ -734,20 +824,50 @@ int main (void)
 	configure_ADC();
 	configure_LED_PWM();
 	configure_port_pins();
-	configure_BLE_usart();
-	configure_i2c_slave();
-	configure_i2c_slave_callbacks();
+	configure_BLE_module(); // Blocks when no BLE module is installed
 	initIMU();
 	if(!beginIMU()) ERROR_LEDs(0);
 	initKalman(0.1, 0.1, 0.5);
-
+	 
+	//ERROR_LEDs(0); // For testing SAM-BA functionallity
 	configure_eeprom();
 	restore_led_data();
-	restore_orientation_controls();
+	restore_orientation_controls_remote_esc();
 	restore_cal_data(true);
+
+	setConstBases();
+
+	if(esc_comms == COMMS_I2C){
+		configure_i2c_slave();
+		configure_i2c_slave_callbacks();
+
+	} else if(esc_comms == COMMS_UART){
+		configure_vesc_usart();
+		configure_vesc_usart_callbacks();
+	}
 	
+	if(esc_comms == COMMS_UART){
+		vesc_uart_expected_bytes = VESC_UART_BYTES_START;  // Start listening for start byte
+		usart_read_buffer_job(&vesc_usart, &vesc_revieve_packet.start, (uint16_t)1);
+	}
+	configured_comms = esc_comms;
 	while(1)
 	{
+		if(configured_comms != esc_comms)
+		{
+			// TODO: Deconfigure old comms and configure new comms
+			ERROR_LEDs(5);
+		}
+
+		if(esc_comms == COMMS_UART){
+			if(GET_LIMITS) {
+				vesc_get_mcconf();
+			} else if(SEND_CONTINUOUS){
+				READ_VESC_VALS = true;
+				vesc_read_all();
+			}
+		}
+
 		readAccel();
 		readGyro();
 		readMag();
@@ -759,7 +879,7 @@ int main (void)
 		if(abs(axKalman - ax) < 10000)
 		{
 			//avgAX = averageAX();
-			axKalman = updateKalman(avgAX, ax_kalman);
+			axKalman = updateKalman(ax, ax_kalman);
 		}
 		//avgAY = averageAY();
 		//avgAZ = averageAZ();
@@ -769,7 +889,7 @@ int main (void)
 		//light_sens = updateKalman(raw_light, light_kalman);
 		
 		ayKalman = updateKalman(ay, ay_kalman);
-		azKalman = updateKalman(ax, az_kalman);
+		azKalman = updateKalman(az, az_kalman);
 		//avgAZ = averageAZ();
 		gxKalman = calcGyro(gx);//(uint16_t)(updateKalman(calcGyro(cgx), gx_kalman)*10);
 		gyKalman = calcGyro(gy);//(uint16_t)(updateKalman(calcGyro(cgy), gy_kalman)*10);
@@ -827,92 +947,93 @@ int main (void)
 		{
 			switch(BLE_TX_INDEX){
 				case 0:
-					send_buffer[0] = 0x11;
-					send_buffer[1] = battery_current & 0xFF;
-					send_buffer[2] = (battery_current & 0xFF00) >> 8;
-					send_buffer[3] = 0x12;
-					send_buffer[4] = battery_voltage;
-					send_buffer[5] = (battery_voltage & 0xFF00) >> 8;
-					send_buffer[6] = 0x13;
-					send_buffer[7] = motor_current;
-					send_buffer[8] = (motor_current & 0xFF00) >> 8;
-					send_buffer[9] = 0x14;
-					send_buffer[10] = vesc_temp;
-					send_buffer[11] = (vesc_temp & 0xFF00) >> 8;
-					send_buffer[12] = 0x15;
-					send_buffer[13] = duty_cycle;
-					send_buffer[14] = 0x16;
-					send_buffer[15] = (motor_rpm & 0xFF);
-					send_buffer[16] = (motor_rpm & 0xFF00) >> 8;
-					send_buffer[17] = (motor_rpm & 0xFF0000) >> 16;
-					usart_write_buffer_wait(&usart_instance, send_buffer, 18);
+					ble_write_buffer[0] = 0x11;
+					ble_write_buffer[1] = latest_vesc_vals.avg_input_current & 0xFF;
+					ble_write_buffer[2] = (latest_vesc_vals.avg_input_current & 0xFF00) >> 8;
+					ble_write_buffer[3] = 0x12;
+					ble_write_buffer[4] = latest_vesc_vals.INPUT_VOLTAGE;
+					ble_write_buffer[5] = (latest_vesc_vals.INPUT_VOLTAGE & 0xFF00) >> 8;
+					ble_write_buffer[6] = 0x13;
+					ble_write_buffer[7] = latest_vesc_vals.avg_motor_current;
+					ble_write_buffer[8] = (latest_vesc_vals.avg_motor_current & 0xFF00) >> 8;
+					ble_write_buffer[9] = 0x14;
+					ble_write_buffer[10] = latest_vesc_vals.temp_fet_filtered;
+					ble_write_buffer[11] = (latest_vesc_vals.temp_fet_filtered & 0xFF00) >> 8;
+					ble_write_buffer[12] = 0x15;
+					ble_write_buffer[13] = latest_vesc_vals.duty_cycle;
+					ble_write_buffer[14] = (latest_vesc_vals.duty_cycle & 0xFF00) >> 8;
+					ble_write_buffer[15] = 0x16;
+					ble_write_buffer[16] = (latest_vesc_vals.rpm & 0xFF);
+					ble_write_buffer[17] = (latest_vesc_vals.rpm & 0xFF00) >> 8;
+					ble_write_buffer[18] = (latest_vesc_vals.rpm & 0xFF0000) >> 16;
+					usart_write_buffer_wait(&ble_usart, ble_write_buffer, 19);
 					break;
 				case 1:
-					send_buffer[0] = 0x17;
-					send_buffer[1] = (mAh_used & 0xFF);
-					send_buffer[2] = (mAh_used & 0xFF00) >> 8;
-					send_buffer[3] = (mAh_used & 0xFF0000) >> 16;
-					send_buffer[4] = 0x18;
-					send_buffer[5] = (mAh_charged & 0xFF);
-					send_buffer[6] = (mAh_charged & 0xFF00) >> 8;
-					send_buffer[7] = (mAh_charged & 0xFF0000) >> 16;
-					send_buffer[8] = 0x19;
-					send_buffer[9] = (Wh_used & 0xFF);
-					send_buffer[10] = (Wh_used & 0xFF00) >> 8;
-					send_buffer[11] = (Wh_used & 0xFF0000) >> 16;
-					send_buffer[12] = 0x1A;
-					send_buffer[13] = (Wh_charged & 0xFF);
-					send_buffer[14] = (Wh_charged & 0xFF00) >> 8;
-					send_buffer[15] = (Wh_charged & 0xFF0000) >> 16;
-					send_buffer[16] = 0x1B;
-					send_buffer[17] = error_codes;
-					send_buffer[18] = 0x21;
-					send_buffer[19] = VescRemoteX;
-					usart_write_buffer_wait(&usart_instance, send_buffer, 20);
+					ble_write_buffer[0] = 0x17;
+					ble_write_buffer[1] = (latest_vesc_vals.amp_hours & 0xFF);
+					ble_write_buffer[2] = (latest_vesc_vals.amp_hours & 0xFF00) >> 8;
+					ble_write_buffer[3] = (latest_vesc_vals.amp_hours & 0xFF0000) >> 16;
+					ble_write_buffer[4] = 0x18;
+					ble_write_buffer[5] = (latest_vesc_vals.amp_hours_charged & 0xFF);
+					ble_write_buffer[6] = (latest_vesc_vals.amp_hours_charged & 0xFF00) >> 8;
+					ble_write_buffer[7] = (latest_vesc_vals.amp_hours_charged & 0xFF0000) >> 16;
+					ble_write_buffer[8] = 0x19;
+					ble_write_buffer[9] = (latest_vesc_vals.watt_hours & 0xFF);
+					ble_write_buffer[10] = (latest_vesc_vals.watt_hours & 0xFF00) >> 8;
+					ble_write_buffer[11] = (latest_vesc_vals.watt_hours & 0xFF0000) >> 16;
+					ble_write_buffer[12] = 0x1A;
+					ble_write_buffer[13] = (latest_vesc_vals.watt_hours_charged & 0xFF);
+					ble_write_buffer[14] = (latest_vesc_vals.watt_hours_charged & 0xFF00) >> 8;
+					ble_write_buffer[15] = (latest_vesc_vals.watt_hours_charged & 0xFF0000) >> 16;
+					ble_write_buffer[16] = 0x1B;
+					ble_write_buffer[17] = latest_vesc_vals.fault;
+					ble_write_buffer[18] = 0x21;
+					ble_write_buffer[19] = remote_x;
+					usart_write_buffer_wait(&ble_usart, ble_write_buffer, 20);
 					break;
 				case 2:
-					send_buffer[0] = 0x2E;
-					send_buffer[1] = ((uint16_t)(heading*10) & 0xFF); // Heading
-					send_buffer[2] = ((uint16_t)(heading*10) & 0xFF00) >> 8; // Heading
-					send_buffer[3] = 0x22;
-					send_buffer[4] = VescRemoteY;
-					send_buffer[5] = 0x23;
-					send_buffer[6] = (VescRemoteButton | (REMOTE_TYPE << 1));
-					send_buffer[7] = 0x24;
-					send_buffer[8] = ((uint16_t)ax & 0xFF); // Accel X
-					send_buffer[9] = ((uint16_t)ax & 0xFF00) >> 8; // Accel X
-					send_buffer[10] = 0x25;
-					send_buffer[11] = ((uint16_t)ayKalman & 0xFF); // Accel Y
-					send_buffer[12] = ((uint16_t)ayKalman & 0xFF00) >> 8; // Accel Y
-					send_buffer[13] = 0x26;
-					send_buffer[14] = ((uint16_t)azKalman & 0xFF); // Accel Z
-					send_buffer[15] = ((uint16_t)azKalman & 0xFF00) >> 8; // Accel Z
-					send_buffer[16] = 0x27;
-					send_buffer[17] = ((uint16_t)(gxKalman*10) & 0xFF); // Gyro X
-					send_buffer[18] = ((uint16_t)(gxKalman*10) & 0xFF00) >> 8; // Gyro X
-					usart_write_buffer_wait(&usart_instance, send_buffer, 19);
+					ble_write_buffer[0] = 0x2E;
+					ble_write_buffer[1] = ((uint16_t)(heading*10) & 0xFF); // Heading
+					ble_write_buffer[2] = ((uint16_t)(heading*10) & 0xFF00) >> 8; // Heading
+					ble_write_buffer[3] = 0x22;
+					ble_write_buffer[4] = remote_y;
+					ble_write_buffer[5] = 0x23;
+					ble_write_buffer[6] = (remote_btn_state | (REMOTE_TYPE << 1));
+					ble_write_buffer[7] = 0x24;
+					ble_write_buffer[8] = ((uint16_t)ax & 0xFF); // Accel X
+					ble_write_buffer[9] = ((uint16_t)ax & 0xFF00) >> 8; // Accel X
+					ble_write_buffer[10] = 0x25;
+					ble_write_buffer[11] = ((uint16_t)ayKalman & 0xFF); // Accel Y
+					ble_write_buffer[12] = ((uint16_t)ayKalman & 0xFF00) >> 8; // Accel Y
+					ble_write_buffer[13] = 0x26;
+					ble_write_buffer[14] = ((uint16_t)azKalman & 0xFF); // Accel Z
+					ble_write_buffer[15] = ((uint16_t)azKalman & 0xFF00) >> 8; // Accel Z
+					ble_write_buffer[16] = 0x27;
+					ble_write_buffer[17] = ((uint16_t)(gxKalman*10) & 0xFF); // Gyro X
+					ble_write_buffer[18] = ((uint16_t)(gxKalman*10) & 0xFF00) >> 8; // Gyro X
+					usart_write_buffer_wait(&ble_usart, ble_write_buffer, 19);
 					break;
 				case 3:
-					send_buffer[0] = 0x28;
-					send_buffer[1] = ((uint16_t)(gyKalman*10) & 0xFF); // Gyro Y
-					send_buffer[2] = ((uint16_t)(gyKalman*10) & 0xFF00) >> 8; // Gyro Y
-					send_buffer[3] = 0x29;
-					send_buffer[4] = ((uint16_t)(gzKalman*10) & 0xFF); // Gyro Z
-					send_buffer[5] = ((uint16_t)(gzKalman*10) & 0xFF00) >> 8; // Gyro Z
-					send_buffer[6] = 0x2A;
-					send_buffer[7] = ((mx) & 0xFF); // Compass X
-					send_buffer[8] = (mx & 0xFF00) >> 8; // Compass X
-					send_buffer[9] = 0x2B;
-					send_buffer[10] = (my & 0xFF); // Compass Y
-					send_buffer[11] = (my & 0xFF00) >> 8; // Compass Y
-					send_buffer[12] = 0x2C;
-					send_buffer[13] = (mz & 0xFF); // Compass Z
-					send_buffer[14] = (mz & 0xFF00) >> 8; // Compass Z
-					send_buffer[15] = 0x2D;
-					send_buffer[16] = ((int)(light_sens) & 0xFF); // Light Sensor
-					send_buffer[17] = ((int)(light_sens) & 0xFF00) >> 8; // Light Sensor
-					send_buffer[18] = 0xDE;
-					usart_write_buffer_wait(&usart_instance, send_buffer, 19);
+					ble_write_buffer[0] = 0x28;
+					ble_write_buffer[1] = ((uint16_t)(gyKalman*10) & 0xFF); // Gyro Y
+					ble_write_buffer[2] = ((uint16_t)(gyKalman*10) & 0xFF00) >> 8; // Gyro Y
+					ble_write_buffer[3] = 0x29;
+					ble_write_buffer[4] = ((uint16_t)(gzKalman*10) & 0xFF); // Gyro Z
+					ble_write_buffer[5] = ((uint16_t)(gzKalman*10) & 0xFF00) >> 8; // Gyro Z
+					ble_write_buffer[6] = 0x2A;
+					ble_write_buffer[7] = ((mx) & 0xFF); // Compass X
+					ble_write_buffer[8] = (mx & 0xFF00) >> 8; // Compass X
+					ble_write_buffer[9] = 0x2B;
+					ble_write_buffer[10] = (my & 0xFF); // Compass Y
+					ble_write_buffer[11] = (my & 0xFF00) >> 8; // Compass Y
+					ble_write_buffer[12] = 0x2C;
+					ble_write_buffer[13] = (mz & 0xFF); // Compass Z
+					ble_write_buffer[14] = (mz & 0xFF00) >> 8; // Compass Z
+					ble_write_buffer[15] = 0x2D;
+					ble_write_buffer[16] = ((int)(light_sens) & 0xFF); // Light Sensor
+					ble_write_buffer[17] = ((int)(light_sens) & 0xFF00) >> 8; // Light Sensor
+					ble_write_buffer[18] = 0xDE;
+					usart_write_buffer_wait(&ble_usart, ble_write_buffer, 19);
 					break;
 			}
 			BLE_TX_INDEX++;
@@ -937,68 +1058,68 @@ int main (void)
 			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
 			BLE_TX_TIME = millis();
 
-			send_buffer[0] = 0x41;
-			send_buffer[1] = motor_current_max; // Motor max current
-			send_buffer[2] = 0x42;
-			send_buffer[3] = motor_current_min; // Motor min current
-			send_buffer[4] = 0x43;
-			send_buffer[5] = battery_current_max; // Battery max current
-			send_buffer[6] = 0x44;
-			send_buffer[7] = battery_current_min; // Battery min current
-			send_buffer[8] = 0x45;
-			send_buffer[9] = absolute_max_current; // Battery ABS max current
-			send_buffer[10] = 0x46;
-			send_buffer[11] = battery_voltage_max; // Battery max voltage
-			usart_write_buffer_wait(&usart_instance, send_buffer, 12);
+			ble_write_buffer[0] = 0x41;
+			ble_write_buffer[1] = mcconf_limits.motor_current_max;
+			ble_write_buffer[2] = 0x42;
+			ble_write_buffer[3] = mcconf_limits.motor_current_min;
+			ble_write_buffer[4] = 0x43;
+			ble_write_buffer[5] = mcconf_limits.input_current_max;
+			ble_write_buffer[6] = 0x44;
+			ble_write_buffer[7] = mcconf_limits.input_current_min;
+			ble_write_buffer[8] = 0x45;
+			ble_write_buffer[9] = mcconf_limits.abs_current_max;
+			ble_write_buffer[10] = 0x46;
+			ble_write_buffer[11] = mcconf_limits.max_vin;
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 12);
 			
 			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
 			BLE_TX_TIME = millis();
 
-			send_buffer[0] = 0x48;
-			send_buffer[1] = voltage_cutoff_start; // Battery cuttoff voltage start
-			send_buffer[2] = 0x49;
-			send_buffer[3] = voltage_cutoff_end; // Battery cuttoff voltage end
-			send_buffer[4] = 0x4A;
-			send_buffer[5] = (motor_rpm_max & 0xFF);
-			send_buffer[6] = (motor_rpm_max & 0xFF00) >> 8;
-			send_buffer[7] = (motor_rpm_max & 0xFF0000) >> 16;
-			send_buffer[8] = 0x4B;
-			send_buffer[9] = (motor_rpm_min & 0xFF);
-			send_buffer[10] = (motor_rpm_min & 0xFF00) >> 8;
-			send_buffer[11] = (motor_rpm_min & 0xFF0000) >> 16;
-			usart_write_buffer_wait(&usart_instance, send_buffer, 12);
+			ble_write_buffer[0] = 0x48;
+			ble_write_buffer[1] = mcconf_limits.battery_cut_start;
+			ble_write_buffer[2] = 0x49;
+			ble_write_buffer[3] = mcconf_limits.battery_cut_end;
+			ble_write_buffer[4] = 0x4A;
+			ble_write_buffer[5] = (mcconf_limits.max_erpm & 0xFF);
+			ble_write_buffer[6] = (mcconf_limits.max_erpm & 0xFF00) >> 8;
+			ble_write_buffer[7] = (mcconf_limits.max_erpm & 0xFF0000) >> 16;
+			ble_write_buffer[8] = 0x4B;
+			ble_write_buffer[9] = (mcconf_limits.min_erpm & 0xFF);
+			ble_write_buffer[10] = (mcconf_limits.min_erpm & 0xFF00) >> 8;
+			ble_write_buffer[11] = (mcconf_limits.min_erpm & 0xFF0000) >> 16;
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 12);
 
 			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
 			BLE_TX_TIME = millis();
 
-			send_buffer[0] = 0x4C;
-			send_buffer[1] = (max_rpm_full & 0xFF);
-			send_buffer[2] = (max_rpm_full & 0xFF00) >> 8;
-			send_buffer[3] = (max_rpm_full & 0xFF0000) >> 16;
-			send_buffer[4] = 0x4D;
-			send_buffer[5] = (max_rpm_full_cc & 0xFF);
-			send_buffer[6] = (max_rpm_full_cc & 0xFF00) >> 8;
-			send_buffer[7] = (max_rpm_full_cc & 0xFF0000) >> 16;
-			send_buffer[8] = 0x4E;
-			send_buffer[9] = mosfet_temp_start; // MOSFET Temp Start
-			send_buffer[10] = 0x4F;
-			send_buffer[11] = mosfet_temp_end; // MOSFET Temp End
-			usart_write_buffer_wait(&usart_instance, send_buffer, 12);
+			ble_write_buffer[0] = 0x4C;
+			ble_write_buffer[1] = ((mcconf_limits.max_erpm_fbrake) & 0xFF);
+			ble_write_buffer[2] = ((mcconf_limits.max_erpm_fbrake) & 0xFF00) >> 8;
+			ble_write_buffer[3] = ((mcconf_limits.max_erpm_fbrake) & 0xFF0000) >> 16;
+			ble_write_buffer[4] = 0x4D;
+			ble_write_buffer[5] = ((mcconf_limits.max_erpm_fbrake_cc) & 0xFF);
+			ble_write_buffer[6] = ((mcconf_limits.max_erpm_fbrake_cc) & 0xFF00) >> 8;
+			ble_write_buffer[7] = ((mcconf_limits.max_erpm_fbrake_cc) & 0xFF0000) >> 16;
+			ble_write_buffer[8] = 0x4E;
+			ble_write_buffer[9] = mcconf_limits.temp_fet_start;
+			ble_write_buffer[10] = 0x4F;
+			ble_write_buffer[11] = mcconf_limits.temp_fet_end;
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 12);
 
 			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
 			BLE_TX_TIME = millis();
 
-			send_buffer[0] = 0x50;
-			send_buffer[1] = motor_temp_start; // Motor Temp Start
-			send_buffer[2] = 0x51;
-			send_buffer[3] = motor_temp_end; // Motor Temp End
-			send_buffer[4] = 0x52;
-			send_buffer[5] = duty_cycle_max; // Max Duty
-			send_buffer[6] = 0x53;
-			send_buffer[7] = duty_cycle_min; // Min Duty
-			send_buffer[8] = 0x47;
-			send_buffer[9] = battery_voltage_min; // REPLACE with Battery min voltage
-			usart_write_buffer_wait(&usart_instance, send_buffer, 10);
+			ble_write_buffer[0] = 0x50;
+			ble_write_buffer[1] = mcconf_limits.temp_motor_start;
+			ble_write_buffer[2] = 0x51;
+			ble_write_buffer[3] = mcconf_limits.temp_motor_end;
+			ble_write_buffer[4] = 0x52;
+			ble_write_buffer[5] = mcconf_limits.max_duty;
+			ble_write_buffer[6] = 0x53;
+			ble_write_buffer[7] = mcconf_limits.min_duty;
+			ble_write_buffer[8] = 0x47;
+			ble_write_buffer[9] = mcconf_limits.min_vin;
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 10);
 
 			SEND_LIMITS = 0;
 			SEND_CONTINUOUS = 1;
@@ -1012,40 +1133,40 @@ int main (void)
 			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
 			BLE_TX_TIME = millis();
 
-			send_buffer[0] = 0x61;
-			send_buffer[1] = ((uint16_t)(err_estimate[ax_kalman]) & 0xFF); // Accel X estimated error
-			send_buffer[2] = 0x62;
-			send_buffer[3] = ((uint16_t)(err_estimate[ay_kalman]) & 0xFF); // AccelY estimated error
-			send_buffer[4] = 0x63;
-			send_buffer[5] = ((uint16_t)(err_estimate[az_kalman]) & 0xFF); // Accel Z estimated error
-			send_buffer[6] = 0x64;
-			send_buffer[7] = ((uint16_t)(err_estimate[gx_kalman]) & 0xFF); // Gyro X estimated error
-			send_buffer[8] = 0x65;
-			send_buffer[9] = ((uint16_t)(err_estimate[gy_kalman]) & 0xFF); // Gyro Y estimated error
-			send_buffer[10] = 0x66;
-			send_buffer[11] = ((uint16_t)(err_estimate[gz_kalman]) & 0xFF); // Gyro Z estimated error
-			send_buffer[12] = 0x67;
-			send_buffer[13] = ((uint16_t)(err_estimate[light_kalman]) & 0xFF); // Light Sensor estimated error
-			usart_write_buffer_wait(&usart_instance, send_buffer, 14);
+			ble_write_buffer[0] = 0x61;
+			ble_write_buffer[1] = ((uint16_t)(err_estimate[ax_kalman]) & 0xFF); // Accel X estimated error
+			ble_write_buffer[2] = 0x62;
+			ble_write_buffer[3] = ((uint16_t)(err_estimate[ay_kalman]) & 0xFF); // AccelY estimated error
+			ble_write_buffer[4] = 0x63;
+			ble_write_buffer[5] = ((uint16_t)(err_estimate[az_kalman]) & 0xFF); // Accel Z estimated error
+			ble_write_buffer[6] = 0x64;
+			ble_write_buffer[7] = ((uint16_t)(err_estimate[gx_kalman]) & 0xFF); // Gyro X estimated error
+			ble_write_buffer[8] = 0x65;
+			ble_write_buffer[9] = ((uint16_t)(err_estimate[gy_kalman]) & 0xFF); // Gyro Y estimated error
+			ble_write_buffer[10] = 0x66;
+			ble_write_buffer[11] = ((uint16_t)(err_estimate[gz_kalman]) & 0xFF); // Gyro Z estimated error
+			ble_write_buffer[12] = 0x67;
+			ble_write_buffer[13] = ((uint16_t)(err_estimate[light_kalman]) & 0xFF); // Light Sensor estimated error
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 14);
 		
 			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
 			BLE_TX_TIME = millis();
 
-			send_buffer[0] = 0x68;
-			send_buffer[1] = ((uint16_t)(q[ax_kalman]*100.0) & 0xFF); // Accel X Sensitivity
-			send_buffer[2] = 0x69;
-			send_buffer[3] = ((uint16_t)(q[ay_kalman]*100.0) & 0xFF); // Accel Y Sensitivity
-			send_buffer[4] = 0x6A;
-			send_buffer[5] = ((uint16_t)(q[az_kalman]*100.0) & 0xFF); // Accel Z Sensitivity
-			send_buffer[6] = 0x6B;
-			send_buffer[7] = ((uint16_t)(q[gx_kalman]*100.0) & 0xFF); // Gyro X Sensitivity
-			send_buffer[8] = 0x6C;
-			send_buffer[9] = ((uint16_t)(q[gy_kalman]*100.0) & 0xFF); // Gyro Y Sensitivity
-			send_buffer[10] = 0x6D;
-			send_buffer[11] = ((uint16_t)(q[gz_kalman]*100.0) & 0xFF); // Gyro Z Sensitivity
-			send_buffer[12] = 0x6E;
-			send_buffer[13] = ((uint16_t)(q[light_kalman]*100.0) & 0xFF); // Light Sensitivity
-			usart_write_buffer_wait(&usart_instance, send_buffer, 14);
+			ble_write_buffer[0] = 0x68;
+			ble_write_buffer[1] = ((uint16_t)(q[ax_kalman]*100.0) & 0xFF); // Accel X Sensitivity
+			ble_write_buffer[2] = 0x69;
+			ble_write_buffer[3] = ((uint16_t)(q[ay_kalman]*100.0) & 0xFF); // Accel Y Sensitivity
+			ble_write_buffer[4] = 0x6A;
+			ble_write_buffer[5] = ((uint16_t)(q[az_kalman]*100.0) & 0xFF); // Accel Z Sensitivity
+			ble_write_buffer[6] = 0x6B;
+			ble_write_buffer[7] = ((uint16_t)(q[gx_kalman]*100.0) & 0xFF); // Gyro X Sensitivity
+			ble_write_buffer[8] = 0x6C;
+			ble_write_buffer[9] = ((uint16_t)(q[gy_kalman]*100.0) & 0xFF); // Gyro Y Sensitivity
+			ble_write_buffer[10] = 0x6D;
+			ble_write_buffer[11] = ((uint16_t)(q[gz_kalman]*100.0) & 0xFF); // Gyro Z Sensitivity
+			ble_write_buffer[12] = 0x6E;
+			ble_write_buffer[13] = ((uint16_t)(q[light_kalman]*100.0) & 0xFF); // Light Sensitivity
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 14);
 
 			SEND_SENSORS = 0;
 			SEND_CONTINUOUS = 1;
@@ -1062,55 +1183,55 @@ int main (void)
 			uint8_t led_mode_switches = ((light_mode << 4) | (HEADLIGHTS << 3) | (SIDELIGHTS << 2) | (LIGHT_CONTROLLED << 1) | IMU_CONTROLED);
 
 			// Global LED Settings
-			send_buffer[0] = 0x31;
-			send_buffer[1] = led_mode_switches; // Current switch states
+			ble_write_buffer[0] = 0x31;
+			ble_write_buffer[1] = led_mode_switches; // Current switch states
 			// Static
-			send_buffer[2] = 0x32;
-			send_buffer[3] = (uint8_t)((float)Static_RGB.LR / 655.35);
-			send_buffer[4] = (uint8_t)((float)Static_RGB.LG / 655.35);
-			send_buffer[5] = (uint8_t)((float)Static_RGB.LB / 655.35);
-			send_buffer[6] = (uint8_t)((float)Static_RGB.RR / 655.35);
-			send_buffer[7] = (uint8_t)((float)Static_RGB.RG / 655.35);
-			send_buffer[8] = (uint8_t)((float)Static_RGB.RB / 655.35);
+			ble_write_buffer[2] = 0x32;
+			ble_write_buffer[3] = (uint8_t)((float)Static_RGB.LR / 655.35);
+			ble_write_buffer[4] = (uint8_t)((float)Static_RGB.LG / 655.35);
+			ble_write_buffer[5] = (uint8_t)((float)Static_RGB.LB / 655.35);
+			ble_write_buffer[6] = (uint8_t)((float)Static_RGB.RR / 655.35);
+			ble_write_buffer[7] = (uint8_t)((float)Static_RGB.RG / 655.35);
+			ble_write_buffer[8] = (uint8_t)((float)Static_RGB.RB / 655.35);
 			// Color Cycle
-			send_buffer[9] = 0x33;
-			send_buffer[10] = (uint8_t)(RateSens[MODE_COLOR_CYCLE] * 100);
-			send_buffer[11] = (uint8_t)(Brightness[MODE_COLOR_CYCLE] * 100);
+			ble_write_buffer[9] = 0x33;
+			ble_write_buffer[10] = (uint8_t)(RateSens[MODE_COLOR_CYCLE] * 100);
+			ble_write_buffer[11] = (uint8_t)(Brightness[MODE_COLOR_CYCLE] * 100);
 			// Compass Cycle
-			send_buffer[12] = 0x34;
-			send_buffer[13] = (uint8_t)(Brightness[MODE_COMPASS_CYCLE] * 100);
+			ble_write_buffer[12] = 0x34;
+			ble_write_buffer[13] = (uint8_t)(Brightness[MODE_COMPASS_CYCLE] * 100);
 			// Throttle Based
-			send_buffer[14] = 0x35;
-			send_buffer[15] = (uint8_t)(RateSens[MODE_THROTTLE] * 100);
-			send_buffer[16] = (uint8_t)(Brightness[MODE_THROTTLE] * 100);
+			ble_write_buffer[14] = 0x35;
+			ble_write_buffer[15] = (uint8_t)(RateSens[MODE_THROTTLE] * 100);
+			ble_write_buffer[16] = (uint8_t)(Brightness[MODE_THROTTLE] * 100);
 			// RPM Based
-			send_buffer[17] = 0x36;
-			send_buffer[18] = (uint8_t)(RateSens[MODE_RPM_CYCLE] * 100);
-			usart_write_buffer_wait(&usart_instance, send_buffer, 19);
+			ble_write_buffer[17] = 0x36;
+			ble_write_buffer[18] = (uint8_t)(RateSens[MODE_RPM_CYCLE] * 100);
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 19);
 			
 			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
 			BLE_TX_TIME = millis();
 
 			// X Accel Based
-			send_buffer[0] = 0x37;
-			send_buffer[1] = (uint8_t)(RateSens[MODE_X_ACCEL] * 100);
+			ble_write_buffer[0] = 0x37;
+			ble_write_buffer[1] = (uint8_t)(RateSens[MODE_X_ACCEL] * 100);
 			// Y Accel Based
-			send_buffer[2] = 0x38;
-			send_buffer[3] = (uint8_t)(RateSens[MODE_Y_ACCEL] * 100);
+			ble_write_buffer[2] = 0x38;
+			ble_write_buffer[3] = (uint8_t)(Brightness[MODE_Y_ACCEL] * 100);
 			// Custom
 			uint8_t color_bright_base = (ColorBase[MODE_CUSTOM] << 4) | BrightBase[MODE_CUSTOM];
-			send_buffer[4] = 0x39;
-			send_buffer[5] = color_bright_base;
-			send_buffer[6] = RateBase[MODE_CUSTOM];
-			send_buffer[7] = (uint8_t)((float)Custom_RGB.LR / 655.35);
-			send_buffer[8] = (uint8_t)((float)Custom_RGB.LG / 655.35);
-			send_buffer[9] = (uint8_t)((float)Custom_RGB.LB / 655.35);
-			send_buffer[10] = (uint8_t)((float)Custom_RGB.RR / 655.35);
-			send_buffer[11] = (uint8_t)((float)Custom_RGB.RG / 655.35);
-			send_buffer[12] = (uint8_t)((float)Custom_RGB.RB / 655.35);
-			send_buffer[13] = (uint8_t)(RateSens[MODE_CUSTOM] * 100);
-			send_buffer[14] = (uint8_t)(Brightness[MODE_CUSTOM] * 100);
-			usart_write_buffer_wait(&usart_instance, send_buffer, 15);
+			ble_write_buffer[4] = 0x39;
+			ble_write_buffer[5] = color_bright_base;
+			ble_write_buffer[6] = RateBase[MODE_CUSTOM];
+			ble_write_buffer[7] = (uint8_t)((float)Custom_RGB.LR / 655.35);
+			ble_write_buffer[8] = (uint8_t)((float)Custom_RGB.LG / 655.35);
+			ble_write_buffer[9] = (uint8_t)((float)Custom_RGB.LB / 655.35);
+			ble_write_buffer[10] = (uint8_t)((float)Custom_RGB.RR / 655.35);
+			ble_write_buffer[11] = (uint8_t)((float)Custom_RGB.RG / 655.35);
+			ble_write_buffer[12] = (uint8_t)((float)Custom_RGB.RB / 655.35);
+			ble_write_buffer[13] = (uint8_t)(RateSens[MODE_CUSTOM] * 100);
+			ble_write_buffer[14] = (uint8_t)(Brightness[MODE_CUSTOM] * 100);
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 15);
 
 			SEND_LED_CHARS = 0;
 			SEND_CONTINUOUS = 1;
@@ -1119,43 +1240,79 @@ int main (void)
 
 		//////////////////////////   Handle Orientation Request   /////////////////////////
 		///////////////////////////////////////////////////////////////////////////////////
-		if(SEND_ORIENTAION)
+		if(SEND_ORIENTAION_CONFIG)
 		{
 			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
 			BLE_TX_TIME = millis();
 
 			// Global LED Settings
-			send_buffer[0] = 0x71;
-			send_buffer[1] = ORIENTATION[0]; // Connectors Orientation
-			send_buffer[2] = ORIENTATION[1]; // Power Orientation
-			usart_write_buffer_wait(&usart_instance, send_buffer, 3);
+			ble_write_buffer[0] = 0x71;
+			ble_write_buffer[1] = ORIENTATION[0]; // Connectors Orientation
+			ble_write_buffer[2] = ORIENTATION[1]; // Power Orientation
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 3);
 
 
-			SEND_ORIENTAION = 0;
+			SEND_ORIENTAION_CONFIG = 0;
 			SEND_CONTINUOUS = 1;
 		}
 
 
 		///////////////////////////   Handle Controls Request   ///////////////////////////
 		///////////////////////////////////////////////////////////////////////////////////
-		if(SEND_CONTROLS)
+		if(SEND_CONTROLS_CONFIG)
 		{
 			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
 			BLE_TX_TIME = millis();
 
 			// Global LED Settings
-			send_buffer[0] = 0x81;
-			send_buffer[1] = (uint8_t)((AUX_ENABLED << 7) | (TURN_ENABLED << 6) | auxControlType);
-			send_buffer[2] = (uint8_t)auxTimedDuration;
-			send_buffer[3] = (uint8_t)((single_aux_control << 4) | single_all_control);
-			send_buffer[4] = (uint8_t)((single_head_control << 4) | single_side_control);
-			send_buffer[5] = (uint8_t)((single_down_control << 4) | single_up_control);
-			send_buffer[6] = (uint8_t)((dual_aux_control << 4) | dual_all_control);
-			send_buffer[7] = (uint8_t)((dual_head_control << 4) | dual_side_control);
-			send_buffer[8] = (uint8_t)((dual_down_control << 4) | dual_up_control);
-			usart_write_buffer_wait(&usart_instance, send_buffer, 9);
+			ble_write_buffer[0] = 0x81;
+			ble_write_buffer[1] = (uint8_t)((AUX_ENABLED << 7) | (TURN_ENABLED << 6) | auxControlType);
+			ble_write_buffer[2] = (uint8_t)auxTimedDuration;
+			ble_write_buffer[3] = (uint8_t)((single_aux_control << 4) | single_all_control);
+			ble_write_buffer[4] = (uint8_t)((single_head_control << 4) | single_side_control);
+			ble_write_buffer[5] = (uint8_t)((single_down_control << 4) | single_up_control);
+			ble_write_buffer[6] = (uint8_t)((dual_aux_control << 4) | dual_all_control);
+			ble_write_buffer[7] = (uint8_t)((dual_head_control << 4) | dual_side_control);
+			ble_write_buffer[8] = (uint8_t)((dual_down_control << 4) | dual_up_control);
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 9);
 
-			SEND_CONTROLS = 0;
+			SEND_CONTROLS_CONFIG = 0;
+			SEND_CONTINUOUS = 1;
+		}
+
+
+		/////////////////////////   Handle Remote Config Request   ////////////////////////
+		///////////////////////////////////////////////////////////////////////////////////
+		if(SEND_REMOTE_CONFIG)
+		{
+			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			BLE_TX_TIME = millis();
+
+			// Global LED Settings
+			ble_write_buffer[0] = 0x72;
+			ble_write_buffer[1] = (uint8_t)((remote_type << 4) | button_type);
+			ble_write_buffer[2] = (uint8_t)(deadzone);
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 3);
+
+			SEND_REMOTE_CONFIG = 0;
+			SEND_CONTINUOUS = 1;
+		}
+
+
+		//////////////////////////   Handle ESC Config Request   //////////////////////////
+		///////////////////////////////////////////////////////////////////////////////////
+		if(SEND_ESC_CONFIG)
+		{
+			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			BLE_TX_TIME = millis();
+
+			// Global LED Settings
+			ble_write_buffer[0] = 0x73;
+			ble_write_buffer[1] = (uint8_t)(esc_fw);
+			ble_write_buffer[2] = (uint8_t)((esc_comms << 4) | UART_baud);
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 3);
+
+			SEND_ESC_CONFIG = 0;
 			SEND_CONTINUOUS = 1;
 		}
 		
@@ -1202,16 +1359,12 @@ int main (void)
 				}
 				case RATE_RPM:
 				{
-					output_rate_sens = (((float)motor_rpm)/motor_rpm_max);
+					output_rate_sens = (((float)latest_vesc_vals.rpm)/mcconf_limits.max_erpm);
 					break;
 				}
 				case RATE_THROTTLE:
 				{
-					float temp_y;
-					if(app_remote_check  && REMOTE_TYPE < 2)
-						temp_y = AppRemoteY-43;
-					else
-						temp_y = VescRemoteY-43;
+					float temp_y = remote_y - 43;
 					if(temp_y < 0 )
 						temp_y = 255+temp_y;
 					output_rate_sens = temp_y/255.0;
@@ -1272,16 +1425,12 @@ int main (void)
 				}
 				case BRIGHT_RPM:
 				{
-					output_brightness = (((float)motor_rpm)/motor_rpm_max);
+					output_brightness = (((float)latest_vesc_vals.rpm)/mcconf_limits.max_erpm);
 					break;
 				}
 				case BRIGHT_THROTTLE:
 				{
-					float temp_y;
-					if(app_remote_check && REMOTE_TYPE < 2)
-						temp_y = AppRemoteY-43;
-					else
-						temp_y = VescRemoteY-43;
+					float temp_y = remote_y - 43;
 					if(temp_y < 0 )
 						temp_y = 255+temp_y;
 					output_brightness = temp_y/255.0;
@@ -1289,10 +1438,13 @@ int main (void)
 				}
 				case BRIGHT_X_ACCEL:
 				{
-					if(axKalman < 0)
+					if(axKalman < 0){
 						output_brightness = axKalman/kalmanAX_min;
-					else
+						SUPRESS_LEFT_RGB = true;
+					} else{
 						output_brightness = axKalman/kalmanAX_max;
+						SUPRESS_RIGHT_RGB = true;
+					}
 					break;
 				}
 				case BRIGHT_Y_ACCEL:
@@ -1406,11 +1558,7 @@ int main (void)
 				}
 				case COLOR_THROTTLE:
 				{
-					float temp_y;
-					if(app_remote_check && REMOTE_TYPE < 2)
-						temp_y = AppRemoteY-43;
-					else
-						temp_y = VescRemoteY-43;
+					float temp_y = remote_y - 43;
 
 					if(temp_y < 0 )
 						temp_y = 255+temp_y;
@@ -1425,8 +1573,8 @@ int main (void)
 				}
 				case COLOR_RPM:	
 				{				
-					cycle_index = (int)(((((float)0x0FFFF) * 3.0) / (float)motor_rpm_max) * (float)motor_rpm) % 0x0FFFF;
-					cycle = (int)(((((float)0x0FFFF) * 3.0) / (float)motor_rpm_max) * (float)motor_rpm) / 0x0FFFF;
+					cycle_index = (int)(((((float)0x0FFFF) * 3.0) / (float)mcconf_limits.max_erpm) * (float)latest_vesc_vals.rpm) % 0x0FFFF;
+					cycle = (int)(((((float)0x0FFFF) * 3.0) / (float)mcconf_limits.max_erpm) * (float)latest_vesc_vals.rpm) / 0x0FFFF;
 					upColor = cycle_index * output_brightness;
 					downColor = (0xFFFF-cycle_index) * output_brightness;
 
@@ -1447,16 +1595,6 @@ int main (void)
 					downColor = (0xFFFF-cycle_index) * output_brightness;
 
 					RGB_Ouptut = setCycleColor(upColor, downColor, cycle);
-					if (axKalman < 0){
-						RGB_Ouptut.RR = 0;
-						RGB_Ouptut.RG = 0;
-						RGB_Ouptut.RB = 0;
-					} else {
-						RGB_Ouptut.RR = 0;
-						RGB_Ouptut.RG = 0;
-						RGB_Ouptut.RB = 0;
-					}
-
 					break;
 				}
 				case COLOR_Y_ACCEL:
@@ -1492,6 +1630,19 @@ int main (void)
 					break;
 				}
 			}
+			if(SUPRESS_LEFT_RGB){
+				RGB_Ouptut.LR = 0;
+				RGB_Ouptut.LG = 0;
+				RGB_Ouptut.LB = 0;
+				SUPRESS_LEFT_RGB = false;
+			}
+			if(SUPRESS_RIGHT_RGB){
+				RGB_Ouptut.RR = 0;
+				RGB_Ouptut.RG = 0;
+				RGB_Ouptut.RB = 0;
+				SUPRESS_RIGHT_RGB = false;
+			}
+			
 			setLeftRGB(RGB_Ouptut.LR,RGB_Ouptut.LG,RGB_Ouptut.LB);
 			setRightRGB(RGB_Ouptut.RR,RGB_Ouptut.RG,RGB_Ouptut.RB);
 			}
@@ -1507,11 +1658,7 @@ int main (void)
 			if(HEADLIGHTS && lightControlHead()){
 				setWhite(0xFFFF);
 
-				float temp_y;
-				if(app_remote_check && REMOTE_TYPE < 2)
-					temp_y = AppRemoteY;
-				else
-					temp_y = VescRemoteY;
+				float temp_y = remote_y;
 
 				if(temp_y < 120){
 					float brake_temp = (((0xFFFF-brake_offset)/120)*(120-temp_y))+brake_offset;
@@ -1552,7 +1699,7 @@ RB = tcc0[0]
 void getLightSens(uint16_t* light_val) {
 	adc_start_conversion(&adc1);
 	while(adc_get_status(&adc1) != ADC_STATUS_RESULT_READY);
-	adc_read(&adc1, &light_val);
+	adc_read(&adc1, light_val);
 	adc_clear_status(&adc1, ADC_STATUS_RESULT_READY);
 }
 

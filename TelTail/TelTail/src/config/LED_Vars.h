@@ -22,7 +22,7 @@
 
 ///////////////////   LED Variables   //////////////////
 ////////////////////////////////////////////////////////
-enum modes{
+typedef enum {
 	MODE_STATIC = 0,
 	MODE_COLOR_CYCLE = 1,
 	MODE_COMPASS_CYCLE = 2,
@@ -32,9 +32,9 @@ enum modes{
 	MODE_X_ACCEL = 6,
 	MODE_Y_ACCEL = 7,
 	MODE_CUSTOM = 8
-} ;
+} modes;
 
-enum  rate_bases{
+typedef enum {
 	RATE_STATIC = 0,
 	RATE_YAW_RATE = 1,
 	RATE_ROLL_RATE = 2,
@@ -43,9 +43,9 @@ enum  rate_bases{
 	RATE_X_ACCEL = 5,
 	RATE_Y_ACCEL = 6,
 	RATE_Z_ACCEL = 7
-};
+} rate_bases;
 
-enum bright_base{
+typedef enum {
 	BRIGHT_STATIC = 0,
 	BRIGHT_YAW_RATE = 1,
 	BRIGHT_ROLL_RATE = 2,
@@ -54,9 +54,9 @@ enum bright_base{
 	BRIGHT_X_ACCEL = 5,
 	BRIGHT_Y_ACCEL = 6,
 	BRIGHT_Z_ACCEL = 7
-};
+} bright_base;
 
-enum color_bases{
+typedef enum {
 	COLOR_STATIC = 0,
 	COLOR_COLOR_CYCLE = 1,
 	COLOR_COMPASS = 2,
@@ -68,7 +68,7 @@ enum color_bases{
 	COLOR_X_ACCEL = 8,
 	COLOR_Y_ACCEL = 9,
 	COLOR_Z_ACCEL = 10
-};
+} color_bases;
 
 struct RGB_Vals{
 	uint16_t LR;
@@ -98,8 +98,6 @@ struct RGB_Vals Custom_RGB = {32767,16384,52428,0,52428,39321};
 uint16_t head, brake = 0; // head/tail brightness
 uint16_t brake_offset = 0x0B00;
 struct RGB_Vals RGB_Ouptut = {0,0,0,0,0,0};
-bool SUPRESS_LEFT_RGB = false;
-bool SUPRESS_RIGHT_RGB = false;
 
 // Bools
 uint8_t HEADLIGHTS = 0; // head/tail light enable bool

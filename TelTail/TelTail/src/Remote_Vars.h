@@ -17,39 +17,24 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef TIMING_H
-#define TIMING_H
+#ifndef REMOTEVARS_H
+#define REMOTEVARS_H
 
-struct tc_module tc0;
+enum REMOTE_TYPE{
+	REMOTE_PPM = 0,
+	REMOTE_UART_PPM,
+	REMOTE_UART_SINGLE,
+	REMOTE_UART_DUAL,
+	REMOTE_APP
+};
 
-uint32_t millis(void);
-void configure_tc(void);
-void check_time(uint32_t* time_var);
+uint8_t remote_type = 0;
+uint8_t button_type = 0;
+uint8_t deadzone = 10;
 
-void configure_tc(void)
-{
-	struct tc_config config_tc;
-	tc_get_config_defaults(&config_tc);
-	
-	config_tc.counter_size = TC_COUNTER_SIZE_32BIT;
-	config_tc.count_direction = TC_COUNT_DIRECTION_UP;
-	config_tc.clock_source =  GCLK_CLKCTRL_GEN_GCLK0;
-	config_tc.clock_prescaler = TC_CLOCK_PRESCALER_DIV1;
-
-	tc_init(&tc0, TC4, &config_tc);
-	tc_enable(&tc0);
-}
-
-
-
-uint32_t millis()
-{
-	return (tc_get_count_value(&tc0)/7500);
-}
-
-void check_time(uint32_t* time_var){
-	if(*time_var > millis())
-		*time_var = 0;
-}
+uint8_t remote_y = 0;
+uint8_t remote_x = 0;
+uint8_t remote_btn_state = 0;
+uint8_t lremote_btn_state = 0;
 
 #endif

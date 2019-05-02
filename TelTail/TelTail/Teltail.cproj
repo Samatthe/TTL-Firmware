@@ -767,6 +767,18 @@
     <Compile Include="src\ASF\sam0\drivers\nvm\nvm.c">
       <SubType>compile</SubType>
     </Compile>
+    <Compile Include="src\ESC_Vars.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="src\crc.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="src\Remote_Vars.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="src\VESC_UART.h">
+      <SubType>compile</SubType>
+    </Compile>
     <None Include="src\ASF\sam0\drivers\tcc\quick_start_faultn\qs_tcc_faultn.h">
       <SubType>compile</SubType>
     </None>

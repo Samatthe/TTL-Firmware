@@ -19,6 +19,10 @@
 
 #ifndef EEPROMFUNCS_H
 #define EEPROMFUNCS_H
+	
+#include "Controls.h"
+#include "IMU.h"
+#include "Remote_Vars.h"
 
 //EEPROM globals
 uint8_t eeprom_data[EEPROM_PAGE_SIZE];
@@ -26,8 +30,8 @@ uint8_t eeprom_data[EEPROM_PAGE_SIZE];
 // Define functions
 void save_led_data(void);
 void restore_led_data(void);
-void save_orientation_controls(void);
-void restore_orientation_controls(void);
+void save_orientation_controls_remote_esc(void);
+void restore_orientation_controls_remote_esc(void);
 void save_cal_data(void);
 void restore_cal_data(bool autoCal);
 
@@ -97,7 +101,7 @@ void restore_led_data(){
 	eeprom_emulator_read_page(0, eeprom_data);
 	
 	// If EEPROM has not been written, configure with default values then write them
-	if(eeprom_data[0] == 0xFF & eeprom_data[1] == 0xFF) {
+	if(eeprom_data[0] == 0xFF && eeprom_data[1] == 0xFF) {
 		SWITCHES = 0x30; // SIDE: on	HEAD: on	LIGHT: disable	IMU: disable
 		SIDELIGHTS = (SWITCHES & 0x10) >> 4;
 		HEADLIGHTS = (SWITCHES & 0x20) >> 5;
@@ -222,7 +226,7 @@ void restore_cal_data(bool autoCal)
 	int16_t temp = 0;
 
 	// If EEPROM has not been written, configure with default values then write them
-	if(eeprom_data[0] == 0xFF & eeprom_data[1] == 0xFF) {
+	if(eeprom_data[0] == 0xFF && eeprom_data[1] == 0xFF) {
 		gBiasRaw[0] = 0;
 		gBiasRaw[1] = 0;
 		gBiasRaw[2] = 0;
@@ -250,7 +254,7 @@ void restore_cal_data(bool autoCal)
 	_autoCalc = autoCal;
 }
 
-void save_orientation_controls()
+void save_orientation_controls_remote_esc()
 {
 	for(int i = 0; i < EEPROM_PAGE_SIZE; i++){
 		eeprom_data[0] = 0;
@@ -274,38 +278,53 @@ void save_orientation_controls()
 	eeprom_data[14] = dual_side_control;
 	eeprom_data[15] = dual_up_control;
 	eeprom_data[16] = dual_down_control;
+
+	eeprom_data[17] = ((remote_type << 4) | (button_type & 0x0F));
+	eeprom_data[18] = deadzone;
+	
+	eeprom_data[19] = esc_fw;
+	eeprom_data[20] = ((esc_comms << 4) | (UART_baud & 0x0F));//*/
+
 	//Write EEPROM data
 	eeprom_emulator_write_page(3, eeprom_data);
 	eeprom_emulator_commit_page_buffer();
 }
 
-void restore_orientation_controls()
+void restore_orientation_controls_remote_esc()
 {
 	eeprom_emulator_read_page(3, eeprom_data);
 
 	// If EEPROM has not been written, configure with default values then write them
-	if(eeprom_data[0] == 0xFF & eeprom_data[1] == 0xFF) {
+	if(eeprom_data[0] == 0xFF && eeprom_data[1] == 0xFF) {
 		ORIENTATION[0] = 1; // Connectors up
 		ORIENTATION[1] = 6; // Power front
 
 		AUX_ENABLED = 0; // Aux disabled
 		TURN_ENABLED = 0; // Turn disabled
-		auxControlType = 0; // MOMENTARY
+		auxControlType = AUX_MOMENTARY;
 		auxTimedDuration = 10; // 1 second
-		single_aux_control = 0; // NONE
-		single_all_control = 1; // SINGLE_TAP 
-		single_head_control = 6; // MEDIUM_PRESS
-		single_side_control = 7; // LONG_PRESS
-		single_up_control = 2; // DOUBLE_TAP
-		single_down_control = 3; // TRIPLE_TAP
-		dual_aux_control = 0; // NONE
-		dual_all_control = 1; // SINGLE_TAP
-		dual_head_control = 6; // MEDIUM_PRESS
-		dual_side_control = 7; // LONG_PRESS
-		dual_up_control =  5; // RIGHT_TAP
-		dual_down_control = 4; // LEFT_TAP
+		single_aux_control = PRESS_NONE;
+		single_all_control = SINGLE_TAP;
+		single_head_control = MEDIUM_PRESS;
+		single_side_control = LONG_PRESS;
+		single_up_control = DOUBLE_TAP;
+		single_down_control = TRIPLE_TAP;
+		dual_aux_control = PRESS_NONE;
+		dual_all_control = SINGLE_TAP;
+		dual_head_control = MEDIUM_PRESS;
+		dual_side_control = LONG_PRESS;
+		dual_up_control =  RIGHT_TAP;
+		dual_down_control = LEFT_TAP;
 
-		save_orientation_controls();
+		remote_type = 0;
+		deadzone = 10;
+		button_type = 1;
+
+		esc_fw = 0;
+		esc_comms = 2;
+		UART_baud = 3;
+
+		save_orientation_controls_remote_esc();
 	}
 	else { // else restore the stored data
 		ORIENTATION[0] = eeprom_data[0];
@@ -327,6 +346,14 @@ void restore_orientation_controls()
 		dual_side_control = eeprom_data[14];
 		dual_up_control = eeprom_data[15];
 		dual_down_control = eeprom_data[16];
+
+		remote_type = ((eeprom_data[17]&0xF0)>>4);
+		button_type = (eeprom_data[17]&0x0F);
+		deadzone = eeprom_data[18];
+
+		esc_fw = eeprom_data[19];
+		esc_comms = ((eeprom_data[20]&0xF0)>>4);
+		UART_baud = (eeprom_data[20]&0x0F);//*/
 	}
 }
 

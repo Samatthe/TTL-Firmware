@@ -155,9 +155,10 @@ src/main.d src/main.o: ../src/main.c ../src/asf.h \
  ../src/ASF/sam0/drivers/tcc/tcc_callback.h \
  ../src/ASF/sam0/drivers/tcc/tcc.h ../src/IMU.h \
  ../src/LSM9DS1_Registers.h ../src/LSM9DS1_Types.h ../src/Timing.h \
- ../src/LED_Vars.h ../src/LED_Functions.h ../src/Controls.h \
- ../src/EEPROM_Functions.h \
- c:\disks\atmel\studio\7.0\toolchain\arm\arm-gnu-toolchain\arm-none-eabi\include\math.h
+ ../src/Remote_Vars.h ../src/ESC_Vars.h ../src/LED_Vars.h \
+ ../src/LED_Functions.h ../src/Controls.h ../src/VESC_UART.h ../src/crc.h \
+ c:\disks\atmel\studio\7.0\toolchain\arm\arm-gnu-toolchain\arm-none-eabi\include\math.h \
+ ../src/EEPROM_Functions.h
 
 ../src/asf.h:
 
@@ -491,12 +492,20 @@ c:\disks\atmel\studio\7.0\toolchain\arm\arm-gnu-toolchain\arm-none-eabi\include\
 
 ../src/Timing.h:
 
+../src/Remote_Vars.h:
+
+../src/ESC_Vars.h:
+
 ../src/LED_Vars.h:
 
 ../src/LED_Functions.h:
 
 ../src/Controls.h:
 
-../src/EEPROM_Functions.h:
+../src/VESC_UART.h:
+
+../src/crc.h:
 
 c:\disks\atmel\studio\7.0\toolchain\arm\arm-gnu-toolchain\arm-none-eabi\include\math.h:
+
+../src/EEPROM_Functions.h:

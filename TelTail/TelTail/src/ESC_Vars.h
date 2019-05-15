@@ -61,7 +61,8 @@ struct vesc_vals {
 	//uint8_t controller_id;
 	//uint8_t NTC_temp;
 	int32_t pwm_val;
-	int16_t FW_VERSION;
+	uint8_t FW_VERSION_MAJOR;
+	uint8_t FW_VERSION_MINOR;
 };
 
 uint8_t GET_LIMITS = 1;
@@ -88,7 +89,8 @@ struct vesc_limits {
 	int32_t max_duty;
 };
  
-uint8_t esc_fw = 0;
+bool ESC_FW_READ = false;
+uint8_t esc_fw = 1;
 uint8_t esc_comms = 0;
 uint8_t UART_baud = 0;
 

@@ -844,9 +844,7 @@ int main (void)
 	} else if(esc_comms == COMMS_UART){
 		configure_vesc_usart();
 		configure_vesc_usart_callbacks();
-	}
-	
-	if(esc_comms == COMMS_UART){
+
 		vesc_uart_expected_bytes = VESC_UART_BYTES_START;  // Start listening for start byte
 		usart_read_buffer_job(&vesc_usart, &vesc_revieve_packet.start, (uint16_t)1);
 	}
@@ -860,11 +858,15 @@ int main (void)
 		}
 
 		if(esc_comms == COMMS_UART){
-			if(GET_LIMITS) {
-				vesc_get_mcconf();
-			} else if(SEND_CONTINUOUS){
-				READ_VESC_VALS = true;
-				vesc_read_all();
+			if(ESC_FW_READ){
+				if(GET_LIMITS) {
+					vesc_get_mcconf();
+				} else if(SEND_CONTINUOUS){
+					READ_VESC_VALS = true;
+					vesc_read_all();
+				}
+			} else{
+				detect_vesc_firmware();
 			}
 		}
 

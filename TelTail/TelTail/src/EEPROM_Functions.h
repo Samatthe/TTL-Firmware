@@ -320,7 +320,7 @@ void restore_orientation_controls_remote_esc()
 		deadzone = 10;
 		button_type = 1;
 
-		esc_fw = 0;
+		esc_fw = FW_3v00; // Set 3.0 as the default FW to prevent bricking any ESCs
 		esc_comms = 2;
 		UART_baud = 3;
 

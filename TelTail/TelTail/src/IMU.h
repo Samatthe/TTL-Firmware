@@ -41,6 +41,15 @@ enum lsm9ds1_axis {
 	ALL_AXIS
 };
 
+enum orientation{
+	ORIENT_UP = 1,
+	ORIENT_DOWN,
+	ORIENT_LEFT,
+	ORIENT_RIGHT,
+	ORIENT_REAR,
+	ORIENT_FRONT
+};
+
 struct IMUSettings settings;
 	
 // We'll store the gyro, accel, and magnetometer readings in a series of
@@ -1567,32 +1576,32 @@ void CorrectIMUvalues(uint8_t connector_orient, uint8_t power_orient){
 		cgy = gy;
 		cmx = mx;
 		cmy = my;
-	} else if(connector_orient == 1){ // Connectors Up
+	} else if(connector_orient == ORIENT_UP){ // Connectors Up
 		caz = az;
 		cgz = gz;
 		cmz = mz;
-		if(power_orient == 3){ // Power Left
+		if(power_orient == ORIENT_LEFT){ // Power Left
 			cax = -ay;
 			cay = ax;
 			cgx = -gy;
 			cgy = gx;
 			cmx = my;
 			cmy = -mx;
-		}else if(power_orient == 4){ // Power Right
+		}else if(power_orient == ORIENT_RIGHT){ // Power Right
 			cax = ay;
 			cay = -ax;
 			cgx = gy;
 			cgy = -gx;
 			cmx = -my;
 			cmy = mx;
-		}else if(power_orient == 5){ // Power Rear
+		}else if(power_orient == ORIENT_REAR){ // Power Rear
 			cax = -ax;
 			cay = -ay;
 			cgx = -gx;
 			cgy = -gy;
 			cmx = -mx;
 			cmy = -my;
-		}else if(power_orient == 6){ // Power Front
+		}else if(power_orient == ORIENT_FRONT){ // Power Front
 			cax = ax;
 			cay = ay;
 			cgx = gx;
@@ -1600,32 +1609,32 @@ void CorrectIMUvalues(uint8_t connector_orient, uint8_t power_orient){
 			cmx = mx;
 			cmy = my;
 		}
-	} else if(connector_orient == 2){ // Connectors Down
+	} else if(connector_orient == ORIENT_DOWN){ // Connectors Down
 		caz = -az;
 		cgz = -gz;
 		cmz = -mz;
-		if(power_orient == 3){ // Power Left
+		if(power_orient == ORIENT_LEFT){ // Power Left
 			cax = ay;
 			cay = ax;
 			cgx = gy;
 			cgy = gx;
 			cmx = -my;
 			cmy = -mx;
-		}else if(power_orient == 4){ // Power Right
+		}else if(power_orient == ORIENT_RIGHT){ // Power Right
 			cax = -ay;
 			cay = -ax;
 			cgx = -gy;
 			cgy = -gx;
 			cmx = my;
 			cmy = mx;
-		}else if(power_orient == 5){ // Power Rear
+		}else if(power_orient == ORIENT_REAR){ // Power Rear
 			cax = ax;
 			cay = -ay;
 			cgx = gx;
 			cgy = -gy;
 			cmx = mx;
 			cmy = -my;
-		}else if(power_orient == 6){ // Power Front
+		}else if(power_orient == ORIENT_FRONT){ // Power Front
 			cax = -ax;
 			cay = ay;
 			cgx = -gx;
@@ -1633,32 +1642,32 @@ void CorrectIMUvalues(uint8_t connector_orient, uint8_t power_orient){
 			cmx = -mx;
 			cmy = my;
 		}
-	} else if(connector_orient == 3){ // Connectors Left
+	} else if(connector_orient == ORIENT_LEFT){ // Connectors Left
 		caz = ax;
 		cgz = gx;
 		cmz = -mx;
-		if(power_orient == 1){ // Power Up
+		if(power_orient == ORIENT_UP){ // Power Up
 			cax = ay;
 			cay = az;
 			cgx = gy;
 			cgy = gz;
 			cmx = -my;
 			cmy = mz;
-		}else if(power_orient == 2){ // Power Down
+		}else if(power_orient == ORIENT_DOWN){ // Power Down
 			cax = -ay;
 			cay = -az;
 			cgx = -gy;
 			cgy = -gz;
 			cmx = my;
 			cmy = -mz;
-		}else if(power_orient == 5){ // Power Rear
+		}else if(power_orient == ORIENT_REAR){ // Power Rear
 			cax = az;
 			cay = -ay;
 			cgx = gz;
 			cgy = -gy;
 			cmx = -mz;
 			cmy = -my;
-		}else if(power_orient == 6){ // Power Front
+		}else if(power_orient == ORIENT_FRONT){ // Power Front
 			cax = -az;
 			cay = ay;
 			cgx = -gz;
@@ -1666,32 +1675,32 @@ void CorrectIMUvalues(uint8_t connector_orient, uint8_t power_orient){
 			cmx = mz;
 			cmy = my;
 		}
-	} else if(connector_orient == 4){ // Connectors Right
+	} else if(connector_orient == ORIENT_RIGHT){ // Connectors Right
 		caz = -ax;
 		cgz = -gx;
 		cmz = mx;
-		if(power_orient == 1){ // Power Up
+		if(power_orient == ORIENT_UP){ // Power Up
 			cax = -ay;
 			cay = az;
 			cgx = -gy;
 			cgy = gz;
 			cmx = my;
 			cmy = mz;
-		}else if(power_orient == 2){ // Power Down
+		}else if(power_orient == ORIENT_DOWN){ // Power Down
 			cax = ay;
 			cay = -az;
 			cgx = gy;
 			cgy = -gz;
 			cmx = -my;
 			cmy = -mz;
-		}else if(power_orient == 5){ // Power Rear
+		}else if(power_orient == ORIENT_REAR){ // Power Rear
 			cax = -az;
 			cay = -ay;
 			cgx = -gz;
 			cgy = -gy;
 			cmx = mz;
 			cmy = -my;
-		}else if(power_orient == 6){ // Power Front
+		}else if(power_orient == ORIENT_FRONT){ // Power Front
 			cax = az;
 			cay = ay;
 			cgx = gz;
@@ -1699,32 +1708,32 @@ void CorrectIMUvalues(uint8_t connector_orient, uint8_t power_orient){
 			cmx = -mz;
 			cmy = my;
 		}
-	} else if(connector_orient == 5){ // Connectors Rear
+	} else if(connector_orient == ORIENT_REAR){ // Connectors Rear
 		caz = -ay;
 		cgz = -gy;
 		cmz = -my;
-		if(power_orient == 1){ // Power Up
+		if(power_orient == ORIENT_UP){ // Power Up
 			cax = ax;
 			cay = az;
 			cgx = gx;
 			cgy = gz;
 			cmx = mx;
 			cmy = mz;
-		}else if(power_orient == 2){ // Power Down
+		}else if(power_orient == ORIENT_DOWN){ // Power Down
 			cax = -ax;
 			cay = -az;
 			cgx = -gx;
 			cgy = -gz;
 			cmx = -mx;
 			cmy = -mz;
-		}else if(power_orient == 3){ // Power Left
+		}else if(power_orient == ORIENT_LEFT){ // Power Left
 			cax = -az;
 			cay = ax;
 			cgx = -gz;
 			cgy = gx;
 			cmx = mz;
 			cmy = -mx;
-		}else if(power_orient == 4){ // Power Right
+		}else if(power_orient == ORIENT_RIGHT){ // Power Right
 			cax = az;
 			cay = -ax;
 			cgx = gz;
@@ -1732,32 +1741,32 @@ void CorrectIMUvalues(uint8_t connector_orient, uint8_t power_orient){
 			cmx = -mz;
 			cmy = mx;
 		}
-	} else if(connector_orient == 6){ // Connectors Front
+	} else if(connector_orient == ORIENT_FRONT){ // Connectors Front
 		caz = ay;
 		cgz = gy;
 		cgz = my;
-		if(power_orient == 1){ // Power Up
+		if(power_orient == ORIENT_UP){ // Power Up
 			cax = -ax;
 			cay = az;
 			cgx = -gx;
 			cgy = gz;
 			cmx = -mx;
 			cmy = mz;
-		}else if(power_orient == 2){ // Power Down
+		}else if(power_orient == ORIENT_DOWN){ // Power Down
 			cax = ax;
 			cay = -az;
 			cgx = gx;
 			cgy = -gz;
 			cmx = mx;
 			cmy = -mz;
-		}else if(power_orient == 3){ // Power Left
+		}else if(power_orient == ORIENT_LEFT){ // Power Left
 			cax = az;
 			cay = ax;
 			cgx = gz;
 			cgy = gx;
 			cmx = -mz;
 			cmy = -mx;
-		}else if(power_orient == 4){ // Power Right
+		}else if(power_orient == ORIENT_RIGHT){ // Power Right
 			cax = -az;
 			cay = -ax;
 			cgx = -gz;

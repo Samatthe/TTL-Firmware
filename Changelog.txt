@@ -1,0 +1,13 @@
+TelTail Lights FW: v0.6.0 2019.06.23
+
+     * Fixed: Orientation settings now affect lighting effects
+     * Fixed: X Accel Based LED mode is less sensitive
+     * Fixed: Y Accel Based LED mode is less snesitive
+     * Fixed: Strobe Brightness Base now works correctly
+     * New: Sensor Control now turns the lights off when the board is kicked up or picked up sideways
+
+
+TelTail Lights FW: v0.5.0 2019.05.25
+
+     * New: Implemented UART Comms
+     * New: Added remote configuration

@@ -631,6 +631,7 @@ void configure_port_pins(void)
 	config_port_pin.input_pull = PORT_PIN_PULL_NONE;
 	config_port_pin.direction = PORT_PIN_DIR_OUTPUT;
 	port_pin_set_config(AUX_PIN, &config_port_pin);
+	port_pin_set_output_level(AUX_PIN,true);
 }
 
 // Turn number to a string for BLE transmission
@@ -780,8 +781,40 @@ int main (void)
 {
 	system_init();
 	configure_tc(); // Configure millis timer
-
 	
+	// Configure Devices
+	configure_ADC();
+	configure_LED_PWM();
+	configure_port_pins();
+	//ERROR_LEDs(2); // Uncomment for testing SAM-BA and LED output functionality
+	configure_BLE_module(); // Blocks when no BLE module is installed
+	initIMU();
+	if(!beginIMU()) ERROR_LEDs(0);
+	initKalman(0.1, 0.1, 0.5);
+	  
+	configure_eeprom();
+	restore_led_data();
+	restore_orientation_controls_remote_esc();
+	restore_cal_data(true);
+
+	setConstBases();
+
+	if(esc_comms == COMMS_I2C){
+		configure_i2c_slave();
+		configure_i2c_slave_callbacks();
+
+	} else if(esc_comms == COMMS_UART){
+		configure_vesc_usart();
+		configure_vesc_usart_callbacks();
+
+		vesc_uart_expected_bytes = VESC_UART_BYTES_START;  // Start listening for start byte
+		usart_read_buffer_job(&vesc_usart, &vesc_revieve_packet.start, (uint16_t)1);
+	}
+	
+	////////////////////////////////////////////
+
+	configured_comms = esc_comms;
+
 	for(int i = 0; i < ACCELsamples; ++i){
 		AXaverage[i] = 0;
 	}
@@ -817,38 +850,11 @@ int main (void)
 	uint32_t BLE_TX_TIME = 0;
 	uint32_t BLE_DUMMY_TIME = 0;
 
+	mcconf_limits.max_erpm = 1000000;
+	mcconf_limits.min_erpm = -1000000;
 
 	////////////////////////////////////////////
 
-	// Configure Devices
-	configure_ADC();
-	configure_LED_PWM();
-	configure_port_pins();
-	configure_BLE_module(); // Blocks when no BLE module is installed
-	initIMU();
-	if(!beginIMU()) ERROR_LEDs(0);
-	initKalman(0.1, 0.1, 0.5);
-	 
-	//ERROR_LEDs(0); // For testing SAM-BA functionallity
-	configure_eeprom();
-	restore_led_data();
-	restore_orientation_controls_remote_esc();
-	restore_cal_data(true);
-
-	setConstBases();
-
-	if(esc_comms == COMMS_I2C){
-		configure_i2c_slave();
-		configure_i2c_slave_callbacks();
-
-	} else if(esc_comms == COMMS_UART){
-		configure_vesc_usart();
-		configure_vesc_usart_callbacks();
-
-		vesc_uart_expected_bytes = VESC_UART_BYTES_START;  // Start listening for start byte
-		usart_read_buffer_job(&vesc_usart, &vesc_revieve_packet.start, (uint16_t)1);
-	}
-	configured_comms = esc_comms;
 	while(1)
 	{
 		if(configured_comms != esc_comms)
@@ -878,24 +884,24 @@ int main (void)
 		CorrectIMUvalues(ORIENTATION[0], ORIENTATION[1]);
 
 
-		if(abs(axKalman - ax) < 10000)
+		if(abs(axKalman - cax) < 10000)
 		{
-			//avgAX = averageAX();
-			axKalman = updateKalman(ax, ax_kalman);
+			avgAX = averageAX();
+			axKalman = updateKalman(avgAX, ax_kalman);
 		}
-		//avgAY = averageAY();
+		avgAY = averageAY();
 		//avgAZ = averageAZ();
 		
-		getLightSens(&light_sens);
+		//getLightSens(&light_sens);
 		//uint16_t raw_light = getLightSens();
 		//light_sens = updateKalman(raw_light, light_kalman);
 		
-		ayKalman = updateKalman(ay, ay_kalman);
-		azKalman = updateKalman(az, az_kalman);
+		ayKalman = updateKalman(avgAY, ay_kalman);
+		azKalman = updateKalman(caz, az_kalman);
 		//avgAZ = averageAZ();
-		gxKalman = calcGyro(gx);//(uint16_t)(updateKalman(calcGyro(cgx), gx_kalman)*10);
-		gyKalman = calcGyro(gy);//(uint16_t)(updateKalman(calcGyro(cgy), gy_kalman)*10);
-		gzKalman = calcGyro(gz);//(updateKalman(calcGyro(cgz), gz_kalman));
+		gxKalman = calcGyro(cgx);//(uint16_t)(updateKalman(calcGyro(cgx), gx_kalman)*10);
+		gyKalman = calcGyro(cgy);//(uint16_t)(updateKalman(calcGyro(cgy), gy_kalman)*10);
+		gzKalman = calcGyro(cgz);//(updateKalman(calcGyro(cgz), gz_kalman));
 
 		if(axKalman > kalmanAX_max)
 			kalmanAX_max = axKalman;
@@ -1002,8 +1008,8 @@ int main (void)
 					ble_write_buffer[5] = 0x23;
 					ble_write_buffer[6] = (remote_btn_state | (REMOTE_TYPE << 1));
 					ble_write_buffer[7] = 0x24;
-					ble_write_buffer[8] = ((uint16_t)ax & 0xFF); // Accel X
-					ble_write_buffer[9] = ((uint16_t)ax & 0xFF00) >> 8; // Accel X
+					ble_write_buffer[8] = ((uint16_t)axKalman & 0xFF); // Accel X
+					ble_write_buffer[9] = ((uint16_t)axKalman & 0xFF00) >> 8; // Accel X
 					ble_write_buffer[10] = 0x25;
 					ble_write_buffer[11] = ((uint16_t)ayKalman & 0xFF); // Accel Y
 					ble_write_buffer[12] = ((uint16_t)ayKalman & 0xFF00) >> 8; // Accel Y
@@ -1331,7 +1337,7 @@ int main (void)
 
 			// Variable for controlling the brightness of the side LEDS
 			// brightness is a value from 0 to 1
-			float output_brightness = 0;
+			static float output_brightness = 0;
 
 			// Variable for controlling the rate or sensitivity in applicable modes
 			// brightness is a value from 0 to 1
@@ -1463,6 +1469,19 @@ int main (void)
 						output_brightness = azKalman/kalmanAZ_min;
 					else
 						output_brightness = azKalman/kalmanAZ_max;
+						break;
+				}
+				case BRIGHT_STROBE:
+				{
+					check_time(&strobe_time);
+					if(output_brightness == 0.0 && (millis()-strobe_time > strobe_off_dur)){
+						output_brightness = 1.0;
+						strobe_time = millis();
+					}
+					else if(output_brightness == 1.0 && (millis()-strobe_time > strobe_on_dur)){
+						output_brightness = 0.0;
+						strobe_time = millis();
+					}
 					break;
 				}
 			}
@@ -1586,11 +1605,11 @@ int main (void)
 				case COLOR_X_ACCEL:
 				{
 					if(axKalman < 0){
-						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / kalmanAX_min) * axKalman) % 0x0FFFF;
-						cycle = (int)(((((float)0x0FFFF) * 3.0) / kalmanAX_min) * axKalman) / 0x0FFFF;
+						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / 3000) * (axKalman+1500)) % 0x0FFFF;
+						cycle = (int)(((((float)0x0FFFF) * 3.0) / 3000) * (axKalman+1500)) / 0x0FFFF;
 					} else {
-						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / kalmanAX_max) * axKalman) % 0x0FFFF;
-						cycle = (int)(((((float)0x0FFFF) * 3.0) / kalmanAX_max) * axKalman) / 0x0FFFF;
+						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / 3000) * (axKalman+1500)) % 0x0FFFF;
+						cycle = (int)(((((float)0x0FFFF) * 3.0) / 3000) * (axKalman+1500)) / 0x0FFFF;
 					}
 
 					upColor = cycle_index * output_brightness;
@@ -1602,11 +1621,11 @@ int main (void)
 				case COLOR_Y_ACCEL:
 				{
 					if(ayKalman < 0){
-						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / kalmanAY_min) * ayKalman) % 0x0FFFF;
-						cycle = (int)(((((float)0x0FFFF) * 3.0) / kalmanAY_min) * ayKalman) / 0x0FFFF;
-						} else {
-						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / kalmanAY_max) * ayKalman) % 0x0FFFF;
-						cycle = (int)(((((float)0x0FFFF) * 3.0) / kalmanAY_max) * ayKalman) / 0x0FFFF;
+						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / 3000) * (ayKalman+1500)) % 0x0FFFF;
+						cycle = (int)(((((float)0x0FFFF) * 3.0) / 3000) * (ayKalman+1500)) / 0x0FFFF;
+					} else {
+						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / 3000) * (ayKalman+1500)) % 0x0FFFF;
+						cycle = (int)(((((float)0x0FFFF) * 3.0) / 3000) * (ayKalman+1500)) / 0x0FFFF;
 					}
 
 					upColor = cycle_index * output_brightness;
@@ -1620,7 +1639,7 @@ int main (void)
 					if(azKalman < 0){
 						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / kalmanAZ_min) * azKalman) % 0x0FFFF;
 						cycle = (int)(((((float)0x0FFFF) * 3.0) / kalmanAZ_min) * azKalman) / 0x0FFFF;
-						} else {
+					} else {
 						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / kalmanAZ_max) * azKalman) % 0x0FFFF;
 						cycle = (int)(((((float)0x0FFFF) * 3.0) / kalmanAZ_max) * azKalman) / 0x0FFFF;
 					}
@@ -1710,8 +1729,8 @@ int16_t averageAX(){
 	for(int i = ACCELsamples-1; i > 0; --i){
 		AXaverage[i] = AXaverage[i-1];
 	}
-	AXtotal += ax;
-	AXaverage[0] = ax;
+	AXtotal += cax;
+	AXaverage[0] = cax;
 
 	return (int16_t)(AXtotal/ACCELsamples);
 }
@@ -1721,8 +1740,8 @@ int16_t averageAY(){
 	for(int i = ACCELsamples-1; i > 0; --i){
 		AYaverage[i] = AYaverage[i-1];
 	}
-	AYtotal += ay;
-	AYaverage[0] = ay;
+	AYtotal += cay;
+	AYaverage[0] = cay;
 
 	return (int16_t)(AYtotal/ACCELsamples);
 }
@@ -1739,16 +1758,43 @@ int16_t averageAZ(){
 }
 
 char sensorControl() {
+static uint8_t off_type = 0;
 static long count = 0;
 static bool result = 1;
 	if(IMU_CONTROLED){
-		if((ayKalman >= 750 && result) || (ayKalman < 750 && !result))
-			count++;
-		else
-			count = 0;
-
+		if(result){
+			if(ayKalman >= 1000 && result){
+				count++;
+				off_type = 1;
+			}
+			else if(ayKalman <= -1000 && result){
+				count++;
+				off_type = 2;
+			}
+			else if(axKalman >= 1250 && result){
+				count++;
+				off_type = 3;
+			}
+			else if(axKalman <= -1250 && result){
+				count++;
+				off_type = 4;
+			}
+			else
+				count = 0;
+		}
+		else if(!result){
+			if((ayKalman < 750 && off_type == 1) || (ayKalman > -750 && off_type == 2) || (axKalman < 1000 && off_type == 3) || (axKalman > -1000 && off_type == 4)){
+				count++;
+			}
+			else
+				count = 0;
+		}
+		
 		if(count > 6)
 			result = !result;
+
+		if(result)
+			off_type = 0;
 
 		return result;
 	}

@@ -53,7 +53,8 @@ enum bright_base{
 	BRIGHT_THROTTLE = 4,
 	BRIGHT_X_ACCEL = 5,
 	BRIGHT_Y_ACCEL = 6,
-	BRIGHT_Z_ACCEL = 7
+	BRIGHT_Z_ACCEL = 7,
+	BRIGHT_STROBE = 8
 };
 
 enum color_bases{
@@ -116,4 +117,8 @@ uint16_t upColor = 0;
 uint16_t downColor = 0;
 float max_cycle_rate = 7500;
 
+// Strobe Vars
+uint32_t strobe_time = 0;
+uint16_t strobe_on_dur = 50;
+uint16_t strobe_off_dur = 500;
 #endif

@@ -4,6 +4,7 @@ TelTail Lights FW: v0.6.0 2019.06.23
      * Fixed: X Accel Based LED mode is less sensitive
      * Fixed: Y Accel Based LED mode is less snesitive
      * Fixed: Strobe Brightness Base now works correctly
+     * Fixed: Lighiting effects based on ESC values no longer have indeterminate behaviour before comms with ESC are initiated
      * New: Sensor Control now turns the lights off when the board is kicked up or picked up sideways
 
 

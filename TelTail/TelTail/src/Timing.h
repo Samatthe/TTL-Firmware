@@ -23,8 +23,10 @@
 struct tc_module tc0;
 
 uint32_t millis(void);
+uint32_t micros(void);
 void configure_tc(void);
 void check_time(uint32_t* time_var);
+void check_time_micros(uint32_t* time_var);
 
 void configure_tc(void)
 {
@@ -47,9 +49,20 @@ uint32_t millis()
 	return (tc_get_count_value(&tc0)/7500);
 }
 
+uint32_t micros()
+{
+	return (tc_get_count_value(&tc0)/7.5);
+}
+
 void check_time(uint32_t* time_var){
 	if(*time_var > millis())
 		*time_var = 0;
+}
+
+
+void check_time_micros(uint32_t* time_var){
+	if(*time_var > micros())
+	*time_var = 0;
 }
 
 #endif

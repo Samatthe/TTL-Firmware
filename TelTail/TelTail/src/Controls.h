@@ -74,6 +74,7 @@ enum BUTTON_TYPE{
 	BTN_NONE = 0,
 	BTN_MOMENTARY,
 	BTN_LATCHED,
+	BTN_LATCHED_PPM,
 	BTN_UART_C,
 	BTN_UART_Z,
 	BTN_THROTTLE_DWN,
@@ -104,10 +105,17 @@ enum AUX_CONTROLS{
 //						Button Presses from coms based remotes (Nunchuck, Firefly-TBI)
 //						Button Presses from PPM remote
 void HandleUserInput(void);
+int get_pulse_width(void);
 
 
 
+uint16_t light_sens = 0;
+int get_pulse_width() {
+	return TCC1->CC[0].bit.CC;
+}
 
+int pulse_width_last = 0;
+int pulse_width = 0;
 void HandleUserInput()
 {
 	///////////////   Use the appropriate throttle input   ///////////////
@@ -149,6 +157,16 @@ void HandleUserInput()
 		case BTN_LATCHED:
 			remote_btn_state = port_pin_get_input_level(PPM_IN);
 			break;
+		case BTN_LATCHED_PPM:{
+			pulse_width = get_pulse_width();
+			if(pulse_width > 9000)
+				remote_btn_state = false;
+			else
+				remote_btn_state = true;
+			pulse_width_last = pulse_width;
+			//light_sens = pulse_width; // for debugging pulse width reading
+			}
+			break;
 		case BTN_UART_C:
 			remote_btn_state = rec_chuck_struct.bt_c;
 			break;	
@@ -168,7 +186,7 @@ void HandleUserInput()
 
 	////   Determine the time the button was held down and released   ////
 	//////////////////////////////////////////////////////////////////////
-	if(button_type != BTN_LATCHED){
+	if(button_type != BTN_LATCHED && button_type != BTN_LATCHED_PPM){
 		if(remote_btn_state == 1 && lremote_btn_state == 0){
 			lButtonTime = millis(); // Mark the time of button state transition
 			ButtonUpTime = 0;

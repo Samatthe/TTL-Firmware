@@ -608,9 +608,9 @@ void configure_ADC(void)
 	config_adc.resolution = ADC_RESOLUTION_16BIT;
 	config_adc.differential_mode = DISABLE;
 	config_adc.negative_input = ADC_NEGATIVE_INPUT_GND;
-	config_adc.positive_input = ADC_POSITIVE_INPUT_PIN16;
+	config_adc.positive_input = ADC_POSITIVE_INPUT_PIN17;
 	config_adc.freerunning = DISABLE;
-	config_adc.run_in_standby = ENABLE;
+	config_adc.run_in_standby = true;
 	config_adc.left_adjust = false;
 	adc_init(&adc1, ADC, &config_adc);
 	adc_enable(&adc1);
@@ -623,8 +623,13 @@ void configure_port_pins(void)
 	port_get_config_defaults(&config_port_pin);
 	
 	config_port_pin.powersave = false;
-	config_port_pin.direction = PORT_PIN_DIR_INPUT;
+	config_port_pin.direction = PORT_PIN_DIR_OUTPUT;
+	port_pin_set_config(PIN_PA06E_TCC1_WO0, &config_port_pin);
+	port_pin_set_output_level(PIN_PA06E_TCC1_WO0,false);
+
+	config_port_pin.powersave = false;
 	config_port_pin.input_pull = PORT_PIN_PULL_UP;
+	config_port_pin.direction = PORT_PIN_DIR_INPUT;
 	port_pin_set_config(PPM_IN, &config_port_pin);
 	
 	config_port_pin.powersave = false;
@@ -774,6 +779,76 @@ void configure_eeprom(void)
 	}
 }
 
+/* Sense: 
+ * None, Rise, Fall, Both, High, Low
+ * 0x0	 0x1   0x2	 0x3   0x4   0x5
+ */
+void config_eic_channel(int ch, int sense, bool filt) {
+	// Config channel
+	EIC->CONFIG[ch/8].reg &= ~(0xF << 4*(ch%8));
+	EIC->CONFIG[ch/8].reg |= (0xF & ((filt? 0x8 : 0) | (0x7 & sense))) << 4*(ch%8);
+	// No wake-up
+	EIC->WAKEUP.reg &= ~(1 << ch);	
+	// No interrupt
+	EIC->INTENCLR.reg |= 1<<ch;
+	// Generate Event 
+	EIC->EVCTRL.reg |= 1<<ch;
+}
+
+void config_eic() {
+	PM->APBAMASK.reg |= PM_APBAMASK_EIC;
+	GCLK->CLKCTRL.reg = GCLK_CLKCTRL_ID(EIC_GCLK_ID) | 
+					    GCLK_CLKCTRL_CLKEN | 
+					    GCLK_CLKCTRL_GEN(0);
+	EIC->CTRL.reg = EIC_CTRL_SWRST;
+	while(EIC->CTRL.bit.SWRST && EIC->STATUS.bit.SYNCBUSY);
+	config_eic_channel(2, 4, false);		
+
+	EIC->CTRL.bit.ENABLE = 1;
+	while(EIC->STATUS.bit.SYNCBUSY);
+}
+
+void config_evsys() {
+	PM->APBCMASK.reg |= PM_APBCMASK_EVSYS;
+	GCLK->CLKCTRL.reg = GCLK_CLKCTRL_ID(EVSYS_GCLK_ID_0) |
+	GCLK_CLKCTRL_CLKEN |
+	GCLK_CLKCTRL_GEN(0);
+	while(GCLK->STATUS.bit.SYNCBUSY);
+
+	EVSYS->CTRL.bit.SWRST = 1;
+	while(EVSYS->CTRL.bit.SWRST);
+
+	// Event receiver
+	EVSYS->USER.reg = EVSYS_USER_CHANNEL(1) | // Set channel n-1
+	EVSYS_USER_USER(EVSYS_ID_USER_TCC1_EV_1); // Match/Capture 1 on TCC1
+	// Event channel
+	EVSYS->CHANNEL.reg = EVSYS_CHANNEL_CHANNEL(0) | // Set channel n
+	EVSYS_CHANNEL_PATH_ASYNCHRONOUS |
+	EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_EIC_EXTINT_2) |
+	EVSYS_CHANNEL_EDGSEL_BOTH_EDGES; // Detect both edges
+	// Wait channel to be ready
+	while(!EVSYS->CHSTATUS.bit.USRRDY0);
+	// EVSYS is always enabled
+}
+
+void gpio_in(int port, int pin)	{
+	PORT->Group[port].DIRCLR.reg = (1 << pin);
+	PORT->Group[port].PINCFG[pin].reg |= PORT_PINCFG_INEN;
+}
+
+void gpio_pmuxen(int port, int pin, int mux) {
+	PORT->Group[port].PINCFG[pin].reg |= PORT_PINCFG_PMUXEN;
+	if (pin & 1)
+		PORT->Group[port].PMUX[pin>>1].bit.PMUXO = mux;
+	else
+		PORT->Group[port].PMUX[pin>>1].bit.PMUXE = mux;
+}
+
+void config_gpio() {
+	gpio_in(1, 2);
+	gpio_pmuxen(1, 2, PINMUX_PB02A_EIC_EXTINT2);
+}
+
 
 
 
@@ -784,8 +859,14 @@ int main (void)
 	
 	// Configure Devices
 	configure_ADC();
-	configure_LED_PWM();
 	configure_port_pins();
+	configure_LED_PWM();
+
+	// Configure The button input pin and interrupt handlers for pulse width measurement
+	config_eic();    // Configure the external interruption
+	config_evsys();  // Configure the event system
+	config_gpio();   // Configure the dedicated pin
+	
 	//ERROR_LEDs(2); // Uncomment for testing SAM-BA and LED output functionality
 	configure_BLE_module(); // Blocks when no BLE module is installed
 	initIMU();
@@ -805,10 +886,11 @@ int main (void)
 
 	} else if(esc_comms == COMMS_UART){
 		configure_vesc_usart();
-		configure_vesc_usart_callbacks();
+		//configure_vesc_usart_callbacks();
 
 		vesc_uart_expected_bytes = VESC_UART_BYTES_START;  // Start listening for start byte
-		usart_read_buffer_job(&vesc_usart, &vesc_revieve_packet.start, (uint16_t)1);
+		//usart_read_buffer_job(&vesc_usart, &vesc_revieve_packet.start, (uint16_t)1);
+		usart_read_buffer_job(&vesc_usart, vesc_USART_read_buffer, MAX_PAYLOAD_LEN+6);
 	}
 	
 	////////////////////////////////////////////
@@ -864,6 +946,7 @@ int main (void)
 		}
 
 		if(esc_comms == COMMS_UART){
+			read_vesc_packet();
 			if(ESC_FW_READ){
 				if(GET_LIMITS) {
 					vesc_get_mcconf();
@@ -892,9 +975,8 @@ int main (void)
 		avgAY = averageAY();
 		//avgAZ = averageAZ();
 		
-		//getLightSens(&light_sens);
-		//uint16_t raw_light = getLightSens();
-		//light_sens = updateKalman(raw_light, light_kalman);
+		getLightSens(&light_sens);
+		light_sens = updateKalman(light_sens, light_kalman);
 		
 		ayKalman = updateKalman(avgAY, ay_kalman);
 		azKalman = updateKalman(caz, az_kalman);

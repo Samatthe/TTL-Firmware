@@ -91,7 +91,7 @@ struct uart_packet{
 
 
 #define VESC_USART_READ_DATA_LENGTH 512
-uint8_t vesc_USART_read_buffer[1];
+uint8_t vesc_USART_read_buffer[MAX_PAYLOAD_LEN+6];
 struct uart_packet vesc_revieve_packet;
 struct usart_module vesc_usart;
 uint32_t vesc_usart_time = 0;
@@ -104,6 +104,7 @@ bool READ_VESC_PWM = false;
 bool READ_VESC_CHUCK = false;
 bool READ_VESC_VALS = false;
 bool READ_VESC_FW = false;
+bool VESC_PACKET_RECIEVED = false;
 
 
 void configure_vesc_usart(void);
@@ -122,6 +123,8 @@ void process_recieved_packet(void);
 void vesc_read_all(void);
 void detect_vesc_firmware(void);
 struct uart_packet recieve_packet(void);
+bool CHECK_BUFFER(uint8_t *buf);
+void read_vesc_packet(void);
 
 float buffer_get_float32_auto(uint8_t *buffer, int8_t index);
 
@@ -168,7 +171,7 @@ enum VESC_UART_BYTES{
 	VESC_UART_BYTES_STOP,
 };
 // The callback routine for when a BLE message is recieved
-void vesc_usart_read_callback(struct usart_module *const usart_module)
+/*void vesc_usart_read_callback(struct usart_module *const usart_module)
 {
 	switch(vesc_uart_expected_bytes){
 		case VESC_UART_BYTES_START:
@@ -234,7 +237,7 @@ void configure_vesc_usart_callbacks(void)
 {
 	usart_register_callback(&vesc_usart, vesc_usart_read_callback, USART_CALLBACK_BUFFER_RECEIVED);
 	usart_enable_callback(&vesc_usart, USART_CALLBACK_BUFFER_RECEIVED);
-}
+}*/
 
 uint8_t vesc_tx_buff[MAX_PAYLOAD_LEN+6];
 void send_packet(struct uart_packet send_pak){
@@ -743,4 +746,44 @@ void detect_vesc_firmware(){
 	}
 }
 
+bool CHECK_BUFFER(uint8_t *buf){
+	return (((buf[0] == 0x2) && (buf[buf[1]+4] == 0x3)) || ((buf[0] == 0x3) && (buf[((buf[1]<<8)|buf[2])+5] == 0x3)));
+}
+
+void read_vesc_packet(void){
+	if(CHECK_BUFFER(vesc_USART_read_buffer)){
+		VESC_PACKET_RECIEVED = true;
+
+		if(vesc_USART_read_buffer[0] == 0x2){
+			packet_len = vesc_USART_read_buffer[1];
+			memcpy(vesc_revieve_packet.payload,vesc_USART_read_buffer+2,packet_len);
+			vesc_revieve_packet.crc[0] = vesc_USART_read_buffer[packet_len+2];
+			vesc_revieve_packet.crc[1] = vesc_USART_read_buffer[packet_len+3];
+		} else{
+			packet_len = ((vesc_USART_read_buffer[1]<<8)|vesc_USART_read_buffer[2]);
+			memcpy(vesc_revieve_packet.payload,vesc_USART_read_buffer+3,packet_len);
+			vesc_revieve_packet.crc[0] = vesc_USART_read_buffer[packet_len+3];
+			vesc_revieve_packet.crc[1] = vesc_USART_read_buffer[packet_len+4];
+		}
+		
+		// Check if the message was corrupted
+		uint16_t crc_check = crc16(vesc_revieve_packet.payload, packet_len);
+		if(crc_check != (uint16_t)((vesc_revieve_packet.crc[0]<<8)|vesc_revieve_packet.crc[1])){
+			ERROR_LEDs(0);
+			VESC_PACKET_RECIEVED = false; // dont handle the packet if it was
+		}
+		
+		vesc_usart_time = millis();
+		HOLD_FOR_REPLY = false;
+
+		//Stop listening to dev1 UART
+		usart_abort_job(&vesc_usart, USART_TRANSCEIVER_RX);
+		// Start listening to dev1 UART
+		usart_read_buffer_job(&vesc_usart, vesc_USART_read_buffer, MAX_PAYLOAD_LEN+6);
+	}
+
+	if(VESC_PACKET_RECIEVED){
+		process_recieved_packet();
+	}
+}
 #endif /* CRC_H_ */

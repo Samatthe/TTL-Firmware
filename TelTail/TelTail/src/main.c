@@ -26,12 +26,9 @@
 #include "LED_Vars.h"
 #include "LED_Functions.h"
 #include "Controls.h"
-#include "EEPROM_Functions.h"#include "VESC_UART.h"
+#include "EEPROM_Functions.h"#include "VESC_UART.h"#include "BLE_UART.h"
 #include <math.h>
 
-///////////   VESC Communication Variables   ///////////
-////////////////////////////////////////////////////////
-uint8_t configured_comms = COMMS_NONE;
 
 ////////////   HW Configuration Variables   ////////////
 ////////////////////////////////////////////////////////
@@ -49,12 +46,6 @@ uint8_t I2C_slave_write_buffer[SLAVE_WRITE_DATA_LENGTH];
 #define SLAVE_ADDRESS 0x12
 #define SLAVE_TIMEOUT 1
 static struct i2c_slave_packet packet;
-
-// usart globals
-#define BLE_USART_READ_DATA_LENGTH 15
-uint8_t ble_USART_read_buffer[BLE_USART_READ_DATA_LENGTH];
-uint8_t ble_write_buffer[44];
-char SEND_LED_CHARS = 0;
 
 
 /////////////////   Sensor Variables   /////////////////
@@ -120,66 +111,10 @@ float gyKalman = 0;
 float gzKalman = 0;
 
 
-////////////   BLE Communication Variables   ///////////
-////////////////////////////////////////////////////////
-#define BLE_BAUD 115200
-bool BLE_CONFIGURED = false; // Set monitor var to check if BLE is configured yet or not
-uint8_t RECIEVE_REMOTE = 0;
-uint8_t NEW_REMOTE_DATA = 0;
-uint8_t SEND_CONTINUOUS = 1;
-uint8_t FIRST_MESSAGE = 1;
-uint8_t SEND_SENSORS = 0;
-uint8_t CAL_IMU = 0;
-uint8_t AppRemoteY = 128;
-bool SEND_ORIENTAION_CONFIG = 0;
-bool SEND_CONTROLS_CONFIG = 0;
-bool SEND_REMOTE_CONFIG = 0;
-bool SEND_ESC_CONFIG = 0;
-bool OK_EXPECTED = 0;
-
-int BLE_delay = 1000;
-
-// Direct Commands
-// Settings Values
-// LED Values
-#define Read_Sensor_Vars		0xAC
-#define Calibrate_All			0xAD
-#define Remote_Data				0xBD
-#define Read_LED_Vars			0xCD
-#define Read_Motor_Limits		0xDD
-#define LED_Mode_Up				0xE1
-#define LED_Mode_Down			0xE2
-#define LED_Toggle				0xE3
-#define Read_Orientaion			0xFE
-#define Calibrate_Gyro			0x00
-#define Calibrate_Accel			0x00
-#define Calibrate_Light			0x00
-#define Read_Controls			0xFC
-#define Aux_Pressed				0xAA
-#define Aux_Released			0xAB
-#define Read_Remote_Config		0xFB
-#define Read_ESC_Config			0xFA
-#define Custom_Values			0xB1
-#define Y_Accel_Values			0xE6
-#define X_Accel_Values			0xE7
-#define RPM_Throttle			0xE8
-#define RPM_Values				0xE9
-#define Throttle_Values			0xEA
-#define Compass_Cycle_Values	0xEB
-#define Color_Cycle_Values		0xEC
-#define Static_Values			0xED
-#define Apply_Orientation		0xFD
-#define Apply_Control_Settings	0xC2
-#define Apply_Remote_Config		0xC3
-#define Apply_ESC_Config		0xC4
-#define End_of_Message			0xAE
-
-
 /////   Function Definitions and System Structs   //////
 ////////////////////////////////////////////////////////
 struct i2c_slave_module i2c_slave_instance;
 struct adc_module adc1;
-struct usart_module ble_usart;
 
 // Initialization functions
 void configure_ADC(void);
@@ -212,14 +147,12 @@ float getPitch(void);
 float updateKalman(float meas, int kalmanIndex);
 
 
-int ble_usart_count = 0;
-uint8_t BLE_MSG[BLE_USART_READ_DATA_LENGTH];
 // The callback routine for when a BLE message is recieved
 void ble_usart_read_callback(struct usart_module *const usart_module)
 {
 	ble_usart_count++;
 
-	if(ble_usart_count < BLE_USART_READ_DATA_LENGTH)
+	if(ble_usart_count < MAX_BLE_MESSAGE_SIZE)
 		BLE_MSG[ble_usart_count-1] = ble_USART_read_buffer[0];
 	else
 		ERROR_LEDs(1);
@@ -533,8 +466,9 @@ void configure_BLE_module()
 	int bauds[5] = {9600, 19200, 38400, 57600, 115200};
 	while(1){
 		configure_ble_usart(bauds[baud]);
-		configure_BLE_usart_callbacks();
-		usart_read_buffer_job(&ble_usart, (uint8_t *)ble_USART_read_buffer, (uint16_t)1);
+		//configure_BLE_usart_callbacks();
+		//usart_read_buffer_job(&ble_usart, (uint8_t *)ble_USART_read_buffer, (uint16_t)1);
+		usart_read_buffer_job(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE);
 
 		baud += 1;
 		if(baud > 4)
@@ -566,6 +500,7 @@ void configure_BLE_module()
 		while(usart_write_buffer_wait(&ble_usart, string3, sizeof(string3))!=STATUS_OK){}
 		for(int i = 0; i < 25000; ++i);
 		
+		read_ble_packet();
 		if(!BLE_CONFIGURED){
 			usart_disable(&ble_usart);
 			for(int i = 0; i < 10000; ++i);
@@ -581,8 +516,8 @@ void configure_BLE_module()
 			uint8_t string5[2] = "AT";
 			while(usart_write_buffer_wait(&ble_usart, string5, sizeof(string5))!=STATUS_OK){}
 			for(int i = 0; i < 10000; ++i);
-			configure_BLE_usart_callbacks();
-			usart_read_buffer_job(&ble_usart, (uint8_t *)ble_USART_read_buffer, (uint16_t)1);
+			//configure_BLE_usart_callbacks();
+			usart_read_buffer_job(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE);
 			break;
 		}
 	}
@@ -945,6 +880,10 @@ int main (void)
 			ERROR_LEDs(5);
 		}
 
+		// Handle BLE Communication
+		read_ble_packet();
+
+		// Communicate with the ESC
 		if(esc_comms == COMMS_UART){
 			read_vesc_packet();
 			if(ESC_FW_READ){
@@ -1032,7 +971,6 @@ int main (void)
 		
 		if(BLE_TX_TIME>millis())
 			BLE_TX_TIME = 0;
-
 		if(SEND_CONTINUOUS && app_remote_check == 0 &&((millis()-BLE_TX_TIME) >= BLE_TX_DELAY))
 		{
 			switch(BLE_TX_INDEX){
@@ -1454,10 +1392,7 @@ int main (void)
 				}
 				case RATE_THROTTLE:
 				{
-					float temp_y = remote_y - 43;
-					if(temp_y < 0 )
-						temp_y = 255+temp_y;
-					output_rate_sens = temp_y/255.0;
+					output_rate_sens = remote_y/255.0;
 				}
 				break;
 				case RATE_X_ACCEL:
@@ -1515,15 +1450,15 @@ int main (void)
 				}
 				case BRIGHT_RPM:
 				{
-					output_brightness = (((float)latest_vesc_vals.rpm)/mcconf_limits.max_erpm);
+					if(latest_vesc_vals.rpm != 0)
+						output_brightness = ((float)abs(latest_vesc_vals.rpm))/(float)mcconf_limits.max_erpm;
+					else
+						output_brightness = 0;
 					break;
 				}
 				case BRIGHT_THROTTLE:
 				{
-					float temp_y = remote_y - 43;
-					if(temp_y < 0 )
-						temp_y = 255+temp_y;
-					output_brightness = temp_y/255.0;
+					output_brightness = remote_y/255.0;
 					break;
 				}
 				case BRIGHT_X_ACCEL:
@@ -1661,12 +1596,8 @@ int main (void)
 				}
 				case COLOR_THROTTLE:
 				{
-					float temp_y = remote_y - 43;
-
-					if(temp_y < 0 )
-						temp_y = 255+temp_y;
-					cycle_index = (int)(((((float)0x0FFFF) * 3.0) / 255.0) * temp_y) % 0x0FFFF;
-					cycle = (int)(((((float)0x0FFFF) * 3.0) / 255.0) * temp_y) / 0x0FFFF;
+					cycle_index = (int)(((((float)0x0FFFF) * 3.0) / 256.0) * remote_y) % 0x0FFFF;
+					cycle = (int)(((((float)0x0FFFF) * 3.0) / 256.0) * remote_y) / 0x0FFFF;
 					upColor = cycle_index * output_brightness;
 					downColor = (0xFFFF-cycle_index) * output_brightness;
 
@@ -1676,8 +1607,14 @@ int main (void)
 				}
 				case COLOR_RPM:	
 				{				
-					cycle_index = (int)(((((float)0x0FFFF) * 3.0) / (float)mcconf_limits.max_erpm) * (float)latest_vesc_vals.rpm) % 0x0FFFF;
-					cycle = (int)(((((float)0x0FFFF) * 3.0) / (float)mcconf_limits.max_erpm) * (float)latest_vesc_vals.rpm) / 0x0FFFF;
+					if(latest_vesc_vals.rpm != 0){
+						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / (float)mcconf_limits.max_erpm) * (float)abs(latest_vesc_vals.rpm)) % 0x0FFFF;
+						cycle = (int)(((((float)0x0FFFF) * 3.0) / (float)mcconf_limits.max_erpm) * (float)abs(latest_vesc_vals.rpm)) / 0x0FFFF;
+					}
+					else{
+						cycle_index = 0;
+						cycle = 0;
+					}
 					upColor = cycle_index * output_brightness;
 					downColor = (0xFFFF-cycle_index) * output_brightness;
 

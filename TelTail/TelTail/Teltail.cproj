@@ -767,6 +767,9 @@
     <Compile Include="src\ASF\sam0\drivers\nvm\nvm.c">
       <SubType>compile</SubType>
     </Compile>
+    <Compile Include="src\BLE_UART.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="src\ESC_Vars.h">
       <SubType>compile</SubType>
     </Compile>

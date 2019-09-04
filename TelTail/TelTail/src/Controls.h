@@ -109,7 +109,7 @@ int get_pulse_width(void);
 
 
 
-uint16_t light_sens = 0;
+//uint16_t light_sens = 0; // for PWM debugging
 int get_pulse_width() {
 	return TCC1->CC[0].bit.CC;
 }

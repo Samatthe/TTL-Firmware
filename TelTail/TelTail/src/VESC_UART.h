@@ -106,6 +106,10 @@ bool READ_VESC_VALS = false;
 bool READ_VESC_FW = false;
 bool VESC_PACKET_RECIEVED = false;
 
+///////////   VESC Communication Variables   ///////////
+////////////////////////////////////////////////////////
+uint8_t configured_comms = COMMS_NONE;
+
 
 void configure_vesc_usart(void);
 void vesc_usart_read_callback(struct usart_module *const usart_module);
@@ -635,26 +639,26 @@ void detect_vesc_firmware(){
 			GET_VALUES_TACH = 45;
 			GET_VALUES_FAULT = 53;
 
-			GET_MCCONF_MTR_CURR_MAX = 9;
-			GET_MCCONF_MTR_CURR_MIN = 13;
-			GET_MCCONF_IN_CURR_MAX = 17;
-			GET_MCCONF_IN_CURR_MIN = 21;
-			GET_MCCONF_ABS_CURR_MAX = 25;
-			GET_MCCONF_ERPM_MIN = 29;
-			GET_MCCONF_ERPM_MAX = 33;
-			GET_MCCONF_ERPM_FBRAKE_MAX = 41;
-			GET_MCCONF_ERPM_FBRAKE_CC_MAX = 45;
-			GET_MCCONF_VIN_MIN = 49;
-			GET_MCCONF_VIN_MAX = 53;
-			GET_MCCONF_BAT_CUT_STRT = 57;
-			GET_MCCONF_BAT_CUT_END = 61;
-			GET_MCCONF_TMP_FET_STRT = 66;
-			GET_MCCONF_TMP_FET_END = 70;
-			GET_MCCONF_TMP_MTR_STRT = 74;
-			GET_MCCONF_TMP_MTR_END = 78;
-			GET_MCCONF_DUTY_MIN = 86;
-			GET_MCCONF_DUTY_MAX = 90;
-		} else if(latest_vesc_vals.FW_VERSION_MAJOR == 23){
+			GET_MCCONF_MTR_CURR_MAX = 5;
+			GET_MCCONF_MTR_CURR_MIN = 9;
+			GET_MCCONF_IN_CURR_MAX = 13;
+			GET_MCCONF_IN_CURR_MIN = 17;
+			GET_MCCONF_ABS_CURR_MAX = 21;
+			GET_MCCONF_ERPM_MIN = 25;
+			GET_MCCONF_ERPM_MAX = 29;
+			GET_MCCONF_ERPM_FBRAKE_MAX = 37;
+			GET_MCCONF_ERPM_FBRAKE_CC_MAX = 41;
+			GET_MCCONF_VIN_MIN = 45;
+			GET_MCCONF_VIN_MAX = 49;
+			GET_MCCONF_BAT_CUT_STRT = 53;
+			GET_MCCONF_BAT_CUT_END = 57;
+			GET_MCCONF_TMP_FET_STRT = 62;
+			GET_MCCONF_TMP_FET_END = 66;
+			GET_MCCONF_TMP_MTR_STRT = 70;
+			GET_MCCONF_TMP_MTR_END = 74;
+			GET_MCCONF_DUTY_MIN = 82;
+			GET_MCCONF_DUTY_MAX = 86;
+		} else if(latest_vesc_vals.FW_VERSION_MAJOR == 23){ // Unity
 			esc_fw = FW_UNITY;
 			COMM_FW_VERSION = 0;
 			COMM_GET_VALUES = 4; // May use COMM_GET_UNITY_VALUES = 38
@@ -679,26 +683,26 @@ void detect_vesc_firmware(){
 			GET_VALUES_TACH = 67;
 			GET_VALUES_FAULT = 83;
 
-			GET_MCCONF_MTR_CURR_MAX = 5;
-			GET_MCCONF_MTR_CURR_MIN = 9;
-			GET_MCCONF_IN_CURR_MAX = 13;
-			GET_MCCONF_IN_CURR_MIN = 17;
-			GET_MCCONF_ABS_CURR_MAX = 21;
-			GET_MCCONF_ERPM_MIN = 25;
-			GET_MCCONF_ERPM_MAX = 29;
-			GET_MCCONF_ERPM_FBRAKE_MAX = 37;
-			GET_MCCONF_ERPM_FBRAKE_CC_MAX = 41;
-			GET_MCCONF_VIN_MIN = 45;
-			GET_MCCONF_VIN_MAX = 49;
-			GET_MCCONF_BAT_CUT_STRT = 53;
-			GET_MCCONF_BAT_CUT_END = 57;
-			GET_MCCONF_TMP_FET_STRT = 62;
-			GET_MCCONF_TMP_FET_END = 66;
-			GET_MCCONF_TMP_MTR_STRT = 70;
-			GET_MCCONF_TMP_MTR_END = 74;
-			GET_MCCONF_DUTY_MIN = 82;
-			GET_MCCONF_DUTY_MAX = 86;
-		} else if(latest_vesc_vals.FW_VERSION_MAJOR == 3 && latest_vesc_vals.FW_VERSION_MINOR >= 100){
+			GET_MCCONF_MTR_CURR_MAX = 9;
+			GET_MCCONF_MTR_CURR_MIN = 13;
+			GET_MCCONF_IN_CURR_MAX = 17;
+			GET_MCCONF_IN_CURR_MIN = 21;
+			GET_MCCONF_ABS_CURR_MAX = 25;
+			GET_MCCONF_ERPM_MIN = 29;
+			GET_MCCONF_ERPM_MAX = 33;
+			GET_MCCONF_ERPM_FBRAKE_MAX = 41;
+			GET_MCCONF_ERPM_FBRAKE_CC_MAX = 45;
+			GET_MCCONF_VIN_MIN = 49;
+			GET_MCCONF_VIN_MAX = 53;
+			GET_MCCONF_BAT_CUT_STRT = 57;
+			GET_MCCONF_BAT_CUT_END = 61;
+			GET_MCCONF_TMP_FET_STRT = 66;
+			GET_MCCONF_TMP_FET_END = 70;
+			GET_MCCONF_TMP_MTR_STRT = 74;
+			GET_MCCONF_TMP_MTR_END = 78;
+			GET_MCCONF_DUTY_MIN = 86;
+			GET_MCCONF_DUTY_MAX = 90;
+		} else if(latest_vesc_vals.FW_VERSION_MAJOR == 3 && latest_vesc_vals.FW_VERSION_MINOR >= 100){ // Ackmaniac
 			esc_fw = FW_ACKMANIAC;
 			COMM_FW_VERSION = 0;
 			COMM_GET_VALUES = 4;
@@ -775,10 +779,11 @@ void read_vesc_packet(void){
 		
 		vesc_usart_time = millis();
 		HOLD_FOR_REPLY = false;
-
-		//Stop listening to dev1 UART
+		
+		memset(vesc_USART_read_buffer,0,MAX_PAYLOAD_LEN+6);
+		//Stop listening to the ESC UART
 		usart_abort_job(&vesc_usart, USART_TRANSCEIVER_RX);
-		// Start listening to dev1 UART
+		// Start listening to the ESC UART
 		usart_read_buffer_job(&vesc_usart, vesc_USART_read_buffer, MAX_PAYLOAD_LEN+6);
 	}
 

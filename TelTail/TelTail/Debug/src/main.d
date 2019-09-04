@@ -158,7 +158,7 @@ src/main.d src/main.o: ../src/main.c ../src/asf.h \
  ../src/Remote_Vars.h ../src/ESC_Vars.h ../src/LED_Vars.h \
  ../src/LED_Functions.h ../src/Controls.h ../src/VESC_UART.h ../src/crc.h \
  c:\disks\atmel\studio\7.0\toolchain\arm\arm-gnu-toolchain\arm-none-eabi\include\math.h \
- ../src/EEPROM_Functions.h
+ ../src/EEPROM_Functions.h ../src/BLE_UART.h
 
 ../src/asf.h:
 
@@ -509,3 +509,5 @@ c:\disks\atmel\studio\7.0\toolchain\arm\arm-gnu-toolchain\arm-none-eabi\include\
 c:\disks\atmel\studio\7.0\toolchain\arm\arm-gnu-toolchain\arm-none-eabi\include\math.h:
 
 ../src/EEPROM_Functions.h:
+
+../src/BLE_UART.h:

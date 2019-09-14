@@ -214,13 +214,16 @@ void process_ble_packet(){
 			save_led_data();
 			break;
 		case LED_Mode_Down:
-			if(light_mode > 0)
-			light_mode--;
+			if(light_mode == 0)
+				light_mode = light_modes - 1;
+			else
+				light_mode--;
 			save_led_data();
 			break;
 		case LED_Mode_Up:
-			if(light_mode < light_modes)
 			light_mode++;
+			if(light_mode >= light_modes)
+				light_mode = 0;
 			save_led_data();
 			break;
 		case Read_Orientaion:

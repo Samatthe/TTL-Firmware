@@ -1136,10 +1136,14 @@ int main (void)
 				}
 				case COLOR_THROTTLE:
 				{
-					cycle_index = (int)(((((float)0x0FFFF) * 3.0) / 256.0) * remote_y) % 0x0FFFF;
-					cycle = (int)(((((float)0x0FFFF) * 3.0) / 256.0) * remote_y) / 0x0FFFF;
+					cycle_index = (int)(((((float)0x0FFFF) * 2.0) / 256.0) * (255-remote_y)) % 0x0FFFF;
+					cycle = (int)(((((float)0x0FFFF) * 2.0) / 256.0) * (255-remote_y)) / 0x0FFFF;
 					upColor = cycle_index * output_brightness;
 					downColor = (0xFFFF-cycle_index) * output_brightness;
+
+					cycle = cycle+2;
+					if(cycle > 2)
+						cycle = cycle - 3;
 
 					RGB_Ouptut = setCycleColor(upColor, downColor, cycle);
 

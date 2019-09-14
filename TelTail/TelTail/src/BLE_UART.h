@@ -94,6 +94,8 @@ bool check_ble_AT_recieved(void);
 bool check_ble_packet_recieved(void);
 void process_ble_packet(void);
 void read_ble_packet(void);
+void configure_BLE_module(void);
+void configure_ble_usart(int baud);
 
 struct ble_packet{
 	uint8_t ID;
@@ -103,11 +105,88 @@ struct ble_packet{
 
 struct ble_packet ble_recieve_packet;
 
-bool check_ble_AT_recieved(){
+
+// Configure SERCOM5 as USART for BLE module
+void configure_ble_usart(int baud)
+{
+	struct usart_config config_usart;
+	usart_get_config_defaults(&config_usart);
+	config_usart.baudrate    = baud;
+	config_usart.mux_setting = USART_RX_3_TX_2_XCK_3;
+	config_usart.pinmux_pad0 = PINMUX_UNUSED;
+	config_usart.pinmux_pad1 = PINMUX_UNUSED;
+	config_usart.pinmux_pad2 = PINMUX_PA20C_SERCOM5_PAD2;
+	config_usart.pinmux_pad3 = PINMUX_PA21C_SERCOM5_PAD3;
+	while (usart_init(&ble_usart,SERCOM5, &config_usart) != STATUS_OK)
+	{}
+	usart_enable(&ble_usart);
+}
+
+void configure_BLE_module()
+{
+	int baud = 0;
+	int bauds[5] = {9600, 19200, 38400, 57600, 115200};
+	while(1){
+		configure_ble_usart(bauds[baud]);
+		usart_read_buffer_job(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE);
+
+		baud += 1;
+		if(baud > 4)
+		baud = 0;
+		
+		for(int i = 0; i < 10000; ++i);
+		uint8_t string1[8];
+		if(BLE_BAUD == 9600)
+		strcpy(string1,"AT+BAUD0");
+		else if(BLE_BAUD == 19200)
+		strcpy(string1,"AT+BAUD1");
+		else if(BLE_BAUD == 38400)
+		strcpy(string1,"AT+BAUD2");
+		else if(BLE_BAUD == 57600)
+		strcpy(string1,"AT+BAUD3");
+		else if(BLE_BAUD == 115200)
+		strcpy(string1,"AT+BAUD4");
+		OK_EXPECTED = true;
+		while(usart_write_buffer_wait(&ble_usart, string1, sizeof(string1))!=STATUS_OK){}
+		for(int i = 0; i < 25000; ++i);
+		
+		OK_EXPECTED = true;
+		uint8_t string2[14] = "AT+NAMETelTail";
+		while(usart_write_buffer_wait(&ble_usart, string2, sizeof(string2))!=STATUS_OK){}
+		for(int i = 0; i < 25000; ++i);
+		
+		OK_EXPECTED = true;
+		uint8_t string3[8] = "AT+POWE3"; // Default = 2
+		while(usart_write_buffer_wait(&ble_usart, string3, sizeof(string3))!=STATUS_OK){}
+		for(int i = 0; i < 25000; ++i);
+		
+		read_ble_packet();
+		if(!BLE_CONFIGURED){
+			usart_disable(&ble_usart);
+			for(int i = 0; i < 10000; ++i);
+		}
+		else{
+			uint8_t string4[8] = "AT+RESET";
+			while(usart_write_buffer_wait(&ble_usart, string4, sizeof(string4))!=STATUS_OK){}
+			for(int i = 0; i < 25000; ++i);
+			usart_disable(&ble_usart);
+			for(int i = 0; i < 500000; ++i);
+			configure_ble_usart(BLE_BAUD);
+			for(int i = 0; i < 5000; ++i);
+			uint8_t string5[2] = "AT";
+			while(usart_write_buffer_wait(&ble_usart, string5, sizeof(string5))!=STATUS_OK){}
+			for(int i = 0; i < 10000; ++i);
+			usart_read_buffer_job(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE);
+			break;
+		}
+	}
+}
+
+inline bool check_ble_AT_recieved(){
 	return (ble_USART_read_buffer[0] == 'O' && ble_USART_read_buffer[1] == 'K');
 }
 
-bool check_ble_packet_recieved(){
+inline bool check_ble_packet_recieved(){
 	return (ble_USART_read_buffer[0] == BLE_START_BYTE && ble_USART_read_buffer[ble_USART_read_buffer[1]+3] == BLE_STOP_BYTE);
 }
 
@@ -161,11 +240,9 @@ void process_ble_packet(){
 			SEND_CONTINUOUS = 0;
 			break;
 		case Aux_Pressed:
-			LIGHTS_ON = true;
 			AppAuxButton = 1;
 			break;
 		case Aux_Released:
-			LIGHTS_ON = false;
 			AppAuxButton = 0;
 			break;
 		case Remote_Data:

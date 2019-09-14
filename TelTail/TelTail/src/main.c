@@ -120,15 +120,11 @@ struct adc_module adc1;
 void configure_ADC(void);
 void configure_i2c_master(void);
 void configure_port_pins(void);
-void configure_BLE_module(void);
-void configure_ble_usart(int baud);
 void configure_i2c_slave(void);
 void number_to_string(uint32_t, char *);
 void configure_i2c_slave_callbacks(void);
 void i2c_write_request_callback(struct i2c_slave_module *const module);
 void initKalman(float meas, float est, float _q);
-void ble_usart_read_callback(struct usart_module *const usart_module);
-void configure_BLE_usart_callbacks(void);
 void i2c_read_request_callback(struct i2c_slave_module *const module);
 void configure_eeprom(void);
 
@@ -145,390 +141,6 @@ int16_t averageAX(void);
 float getRoll(void);
 float getPitch(void);
 float updateKalman(float meas, int kalmanIndex);
-
-
-// The callback routine for when a BLE message is recieved
-void ble_usart_read_callback(struct usart_module *const usart_module)
-{
-	ble_usart_count++;
-
-	if(ble_usart_count < MAX_BLE_MESSAGE_SIZE)
-		BLE_MSG[ble_usart_count-1] = ble_USART_read_buffer[0];
-	else
-		ERROR_LEDs(1);
-
-		
-
-	usart_read_buffer_job(&ble_usart, (uint8_t *)ble_USART_read_buffer, (uint16_t)1);
-	if(ble_USART_read_buffer[0] == 0xAE){ //switch the message length
-		bool MESSAGE_HANDLED = false;
-		switch(ble_usart_count){
-			case 2:
-				switch(BLE_MSG[0]){ //switch the message ID
-					case Read_Motor_Limits:
-						GET_LIMITS = 1;
-						SEND_CONTINUOUS = 0;
-						MESSAGE_HANDLED = true;
-						break;
-					case (int)Read_LED_Vars:
-						SEND_LED_CHARS = 1;
-						SEND_CONTINUOUS = 0;
-						MESSAGE_HANDLED = true;
-						break;
-					case Calibrate_All:
-						_autoCalc = false; // Workaround so that calibrate doesnt include the current offset
-						calibrate(true);
-						save_cal_data();
-						MESSAGE_HANDLED = true;
-						break;
-					case Read_Sensor_Vars:
-						SEND_SENSORS = 1;
-						SEND_CONTINUOUS = 0;
-						MESSAGE_HANDLED = true;
-						break;
-					case LED_Toggle:
-						LIGHTS_ON = !LIGHTS_ON;
-						save_led_data();
-						MESSAGE_HANDLED = true;
-						break;
-					case LED_Mode_Down:
-						if(light_mode > 0)
-						light_mode--;
-						save_led_data();
-						MESSAGE_HANDLED = true;
-						break;
-					case LED_Mode_Up:
-						if(light_mode < light_modes)
-						light_mode++;
-						save_led_data();
-						MESSAGE_HANDLED = true;
-						break;
-					case Read_Orientaion:
-						SEND_ORIENTAION_CONFIG = 1;
-						SEND_CONTINUOUS = 0;
-						MESSAGE_HANDLED = true;
-						break;
-					case Read_Controls:
-						SEND_CONTROLS_CONFIG = 1;
-						SEND_CONTINUOUS = 0;
-						MESSAGE_HANDLED = true;
-						break;
-					case Read_Remote_Config:
-						SEND_REMOTE_CONFIG = 1;
-						SEND_CONTINUOUS = 0;
-						MESSAGE_HANDLED = true;
-						break;
-					case Read_ESC_Config:
-						SEND_ESC_CONFIG = 1;
-						SEND_CONTINUOUS = 0;
-						MESSAGE_HANDLED = true;
-						break;
-					case Aux_Pressed:
-						LIGHTS_ON = true;
-						AppAuxButton = 1;
-						MESSAGE_HANDLED = true;
-						break;
-					case Aux_Released:
-						LIGHTS_ON = false;
-						AppAuxButton = 0;
-						MESSAGE_HANDLED = true;
-						break;
-				}//*/
-				break;
-			case 3:
-				switch(BLE_MSG[0]){
-					case Remote_Data:
-						AppRemoteY = (BLE_MSG[1] & 0x0FF);
-						NEW_REMOTE_DATA = 1;
-						MESSAGE_HANDLED = true;
-						break;
-					case RPM_Throttle:
-						LIGHTS_ON = 1;
-						light_mode = MODE_RPM_THROTTLE;
-						SWITCHES = BLE_MSG[1];
-						SIDELIGHTS = (SWITCHES & 0x10) >> 4;
-						HEADLIGHTS = (SWITCHES & 0x20) >> 5;
-						LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
-						IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-						save_led_data();
-						MESSAGE_HANDLED = true;
-						break;
-				}//*/
-				break;
-			case 4:
-				switch(BLE_MSG[0]){
-					case Compass_Cycle_Values:
-						LIGHTS_ON = 1;
-						light_mode = MODE_COMPASS_CYCLE;
-						SWITCHES = BLE_MSG[1];
-						SIDELIGHTS = (SWITCHES & 0x10) >> 4;
-						HEADLIGHTS = (SWITCHES & 0x20) >> 5;
-						LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
-						IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-						Brightness[MODE_COMPASS_CYCLE] = ((float)(BLE_MSG[2]))/100;
-						save_led_data();
-						MESSAGE_HANDLED = true;
-						break;
-					case RPM_Values:
-						LIGHTS_ON = 1;
-						light_mode = MODE_RPM_CYCLE;
-						SWITCHES = BLE_MSG[1];
-						SIDELIGHTS = (SWITCHES & 0x10) >> 4;
-						HEADLIGHTS = (SWITCHES & 0x20) >> 5;
-						LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
-						IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-						RateSens[MODE_RPM_CYCLE] = ((float)(BLE_MSG[2]))/100;
-						save_led_data();
-						MESSAGE_HANDLED = true;
-						break;
-					case X_Accel_Values:
-						LIGHTS_ON = 1;
-						light_mode = MODE_X_ACCEL;
-						SWITCHES = BLE_MSG[1];
-						SIDELIGHTS = (SWITCHES & 0x10) >> 4;
-						HEADLIGHTS = (SWITCHES & 0x20) >> 5;
-						LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
-						IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-						RateSens[MODE_X_ACCEL] = ((float)(BLE_MSG[2]))/100;
-						save_led_data();
-						MESSAGE_HANDLED = true;
-						break;
-					case Y_Accel_Values:
-						LIGHTS_ON = 1;
-						light_mode = MODE_Y_ACCEL;
-						SWITCHES = BLE_MSG[1];
-						SIDELIGHTS = (SWITCHES & 0x10) >> 4;
-						HEADLIGHTS = (SWITCHES & 0x20) >> 5;
-						LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
-						IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-						Brightness[MODE_Y_ACCEL] = ((float)(BLE_MSG[2]))/100;
-						save_led_data();
-						MESSAGE_HANDLED = true;
-						break;
-					case Apply_Orientation:
-						ORIENTATION[0] = BLE_MSG[1];
-						ORIENTATION[1] = BLE_MSG[2];
-						save_orientation_controls_remote_esc();
-						MESSAGE_HANDLED = true;
-						break;
-					case Apply_Remote_Config:
-						remote_type = (BLE_MSG[1]&0x0F0)>>4;
-						button_type = (BLE_MSG[1]&0x0F);
-						deadzone = BLE_MSG[2];
-						save_orientation_controls_remote_esc();
-						MESSAGE_HANDLED = true;
-						break;
-					case Apply_ESC_Config:
-						esc_fw = BLE_MSG[1];
-						esc_comms = (BLE_MSG[2]&0x0F0)>>4;
-						UART_baud = (BLE_MSG[2]&0x0F);
-						save_orientation_controls_remote_esc();
-						MESSAGE_HANDLED = true;
-						configured_comms = esc_comms;
-						break;
-				}//*/
-				break;
-			case 5:
-				switch(BLE_MSG[0]){
-					case Color_Cycle_Values:
-						LIGHTS_ON = 1;
-						light_mode = MODE_COLOR_CYCLE;
-						SWITCHES = BLE_MSG[1];
-						SIDELIGHTS = (SWITCHES & 0x10) >> 4;
-						HEADLIGHTS = (SWITCHES & 0x20) >> 5;
-						LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
-						IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-						RateSens[MODE_COLOR_CYCLE] = ((float)(BLE_MSG[2]))/100;
-						Brightness[MODE_COLOR_CYCLE] = ((float)(BLE_MSG[3]))/100;
-						save_led_data();
-						MESSAGE_HANDLED = true;
-						break;
-					case Throttle_Values:
-						LIGHTS_ON = 1;
-						light_mode = MODE_THROTTLE;
-						SWITCHES = BLE_MSG[1];
-						SIDELIGHTS = (SWITCHES & 0x10) >> 4;
-						HEADLIGHTS = (SWITCHES & 0x20) >> 5;
-						LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
-						IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-						RateSens[MODE_THROTTLE] = ((float)(BLE_MSG[2]))/100;
-						Brightness[MODE_THROTTLE] = ((float)(BLE_MSG[3]))/100;
-						save_led_data();
-						MESSAGE_HANDLED = true;
-						break;
-				}
-				break;
-			case 9:
-				switch(BLE_MSG[0]){
-					case Static_Values:
-						LIGHTS_ON = 1;
-						light_mode = MODE_STATIC;
-						SWITCHES = BLE_MSG[1];
-						SIDELIGHTS = (SWITCHES & 0x10) >> 4;
-						HEADLIGHTS = (SWITCHES & 0x20) >> 5;
-						LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
-						IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-						Static_RGB.LR = (uint16_t)((float)BLE_MSG[2] * 257);
-						Static_RGB.LG = (uint16_t)((float)BLE_MSG[3] * 257);
-						Static_RGB.LB = (uint16_t)((float)BLE_MSG[4] * 257);
-						Static_RGB.RR = (uint16_t)((float)BLE_MSG[5] * 257);
-						Static_RGB.RG = (uint16_t)((float)BLE_MSG[6] * 257);
-						Static_RGB.RB = (uint16_t)((float)BLE_MSG[7] * 257);
-						save_led_data();
-						MESSAGE_HANDLED = true;
-						break;
-				}//*/
-				break;
-			case 10:
-				switch(BLE_MSG[0]){
-					case Apply_Control_Settings:
-						AUX_ENABLED = (BLE_MSG[1]&0x80)>>7;
-						TURN_ENABLED = (BLE_MSG[1]&0x40)>>6;
-						auxControlType = (BLE_MSG[1]&0x0F);
-						auxTimedDuration = (BLE_MSG[2]&0xFF);
-						single_aux_control = (BLE_MSG[3]&0xF0)>>4;
-						single_all_control = (BLE_MSG[3]&0x0F);
-						single_head_control = (BLE_MSG[4]&0xF0)>>4;
-						single_side_control = (BLE_MSG[4]&0x0F);
-						single_down_control = (BLE_MSG[5]&0xF0)>>4;
-						single_up_control = (BLE_MSG[5]&0x0F);
-						dual_aux_control = (BLE_MSG[6]&0xF0)>>4;
-						dual_all_control = (BLE_MSG[6]&0x0F);
-						dual_head_control = (BLE_MSG[7]&0xF0)>>4;
-						dual_side_control = (BLE_MSG[7]&0x0F);
-						dual_down_control = (BLE_MSG[8]&0xF0)>>4;
-						dual_up_control = (BLE_MSG[8]&0x0F);
-						save_orientation_controls_remote_esc();
-						MESSAGE_HANDLED = true;
-						break;
-				}//*/
-				break;
-			case 12:
-				switch(BLE_MSG[0]){
-					case Custom_Values:
-						LIGHTS_ON = 1;
-						light_mode = MODE_CUSTOM;
-						SWITCHES = BLE_MSG[1];
-						SIDELIGHTS = (SWITCHES & 0x10) >> 4;
-						HEADLIGHTS = (SWITCHES & 0x20) >> 5;
-						LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
-						IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-						ColorBase[MODE_CUSTOM] = (SWITCHES & 0x0F);
-						RateBase[MODE_CUSTOM] = (BLE_MSG[2] & 0xF0) >> 4;
-						BrightBase[MODE_CUSTOM] = (BLE_MSG[2] & 0x0F);
-						Custom_RGB.LR = (uint16_t)((float)BLE_MSG[3] * 257);
-						Custom_RGB.LG = (uint16_t)((float)BLE_MSG[4] * 257);
-						Custom_RGB.LB = (uint16_t)((float)BLE_MSG[5] * 257);
-						Custom_RGB.RR = (uint16_t)((float)BLE_MSG[6] * 257);
-						Custom_RGB.RG = (uint16_t)((float)BLE_MSG[7] * 257);
-						Custom_RGB.RB = (uint16_t)((float)BLE_MSG[8] * 257);
-						RateSens[MODE_CUSTOM] = ((float)(BLE_MSG[9]))/100;
-						Brightness[MODE_CUSTOM] = ((float)(BLE_MSG[10]))/100;
-						save_led_data();
-						MESSAGE_HANDLED = true;
-						break;
-				}//*/
-				break;
-		}
-		if(MESSAGE_HANDLED || (BLE_MSG[0] == 'O' && BLE_MSG[1] == 'K')) // Check that the message was handled to avoid interrupting a message containing 
-			ble_usart_count = 0;
-	}
-	else if(BLE_MSG[ble_usart_count-3] == 'O' && BLE_MSG[ble_usart_count-2] == 'K' && ble_USART_read_buffer[0] == '+' && OK_EXPECTED)
-	{
-		BLE_CONFIGURED = true;
-		OK_EXPECTED = false;
-		ble_usart_count = 0;
-	} else if((BLE_MSG[ble_usart_count-7] == 'O' && BLE_MSG[ble_usart_count-6] == 'K' && BLE_MSG[ble_usart_count-5] == '+' && BLE_MSG[ble_usart_count-4] == 'C' && BLE_MSG[ble_usart_count-3] == 'O' && BLE_MSG[ble_usart_count-2] == 'N' && BLE_MSG[ble_usart_count-1] == 'N') ||
-				(BLE_MSG[ble_usart_count-8] == 'O' && BLE_MSG[ble_usart_count-7] == 'K' && BLE_MSG[ble_usart_count-6] == '+' && BLE_MSG[ble_usart_count-5] == 'R' && BLE_MSG[ble_usart_count-4] == 'E' && BLE_MSG[ble_usart_count-3] == 'S' && BLE_MSG[ble_usart_count-2] == 'E' && BLE_MSG[ble_usart_count-1] == 'T')){
-		ble_usart_count = 0;
-	}
-}
-
-// Configure SERCOM5 as USART for BLE module
-void configure_ble_usart(int baud)
-{
-	struct usart_config config_usart;
-	usart_get_config_defaults(&config_usart);
-	config_usart.baudrate    = baud;
-	config_usart.mux_setting = USART_RX_3_TX_2_XCK_3;
-	config_usart.pinmux_pad0 = PINMUX_UNUSED;
-	config_usart.pinmux_pad1 = PINMUX_UNUSED;
-	config_usart.pinmux_pad2 = PINMUX_PA20C_SERCOM5_PAD2;
-	config_usart.pinmux_pad3 = PINMUX_PA21C_SERCOM5_PAD3;
-	while (usart_init(&ble_usart,SERCOM5, &config_usart) != STATUS_OK)
-	{}
-	usart_enable(&ble_usart);
-}
-
-void configure_BLE_module()
-{
-	int baud = 0;
-	int bauds[5] = {9600, 19200, 38400, 57600, 115200};
-	while(1){
-		configure_ble_usart(bauds[baud]);
-		//configure_BLE_usart_callbacks();
-		//usart_read_buffer_job(&ble_usart, (uint8_t *)ble_USART_read_buffer, (uint16_t)1);
-		usart_read_buffer_job(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE);
-
-		baud += 1;
-		if(baud > 4)
-			baud = 0;
-			
-		for(int i = 0; i < 10000; ++i);
-		uint8_t string1[8];
-		if(BLE_BAUD == 9600)
-			strcpy(string1,"AT+BAUD0");
-		else if(BLE_BAUD == 19200)
-			strcpy(string1,"AT+BAUD1");
-		else if(BLE_BAUD == 38400)
-			strcpy(string1,"AT+BAUD2");
-		else if(BLE_BAUD == 57600)
-			strcpy(string1,"AT+BAUD3");
-		else if(BLE_BAUD == 115200)
-			strcpy(string1,"AT+BAUD4");
-		OK_EXPECTED = true;
-		while(usart_write_buffer_wait(&ble_usart, string1, sizeof(string1))!=STATUS_OK){}
-		for(int i = 0; i < 25000; ++i);
-		
-		OK_EXPECTED = true;
-		uint8_t string2[14] = "AT+NAMETelTail";
-		while(usart_write_buffer_wait(&ble_usart, string2, sizeof(string2))!=STATUS_OK){}
-		for(int i = 0; i < 25000; ++i);
-		
-		OK_EXPECTED = true;
-		uint8_t string3[8] = "AT+POWE3"; // Default = 2
-		while(usart_write_buffer_wait(&ble_usart, string3, sizeof(string3))!=STATUS_OK){}
-		for(int i = 0; i < 25000; ++i);
-		
-		read_ble_packet();
-		if(!BLE_CONFIGURED){
-			usart_disable(&ble_usart);
-			for(int i = 0; i < 10000; ++i);
-		}
-		else{
-			uint8_t string4[8] = "AT+RESET";
-			while(usart_write_buffer_wait(&ble_usart, string4, sizeof(string4))!=STATUS_OK){}
-			for(int i = 0; i < 25000; ++i);
-			usart_disable(&ble_usart);
-			for(int i = 0; i < 500000; ++i);
-			configure_ble_usart(BLE_BAUD);
-			for(int i = 0; i < 5000; ++i);
-			uint8_t string5[2] = "AT";
-			while(usart_write_buffer_wait(&ble_usart, string5, sizeof(string5))!=STATUS_OK){}
-			for(int i = 0; i < 10000; ++i);
-			//configure_BLE_usart_callbacks();
-			usart_read_buffer_job(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE);
-			break;
-		}
-	}
-}
-
-// Configure SERCOM callback for recieving a buffer frame
-void configure_BLE_usart_callbacks(void)
-{
-	usart_register_callback(&ble_usart, ble_usart_read_callback, USART_CALLBACK_BUFFER_RECEIVED);
-	usart_enable_callback(&ble_usart, USART_CALLBACK_BUFFER_RECEIVED);
-}
 
 // Configure the light sensor port as an input
 void configure_ADC(void)
@@ -714,76 +326,6 @@ void configure_eeprom(void)
 	}
 }
 
-/* Sense: 
- * None, Rise, Fall, Both, High, Low
- * 0x0	 0x1   0x2	 0x3   0x4   0x5
- */
-void config_eic_channel(int ch, int sense, bool filt) {
-	// Config channel
-	EIC->CONFIG[ch/8].reg &= ~(0xF << 4*(ch%8));
-	EIC->CONFIG[ch/8].reg |= (0xF & ((filt? 0x8 : 0) | (0x7 & sense))) << 4*(ch%8);
-	// No wake-up
-	EIC->WAKEUP.reg &= ~(1 << ch);	
-	// No interrupt
-	EIC->INTENCLR.reg |= 1<<ch;
-	// Generate Event 
-	EIC->EVCTRL.reg |= 1<<ch;
-}
-
-void config_eic() {
-	PM->APBAMASK.reg |= PM_APBAMASK_EIC;
-	GCLK->CLKCTRL.reg = GCLK_CLKCTRL_ID(EIC_GCLK_ID) | 
-					    GCLK_CLKCTRL_CLKEN | 
-					    GCLK_CLKCTRL_GEN(0);
-	EIC->CTRL.reg = EIC_CTRL_SWRST;
-	while(EIC->CTRL.bit.SWRST && EIC->STATUS.bit.SYNCBUSY);
-	config_eic_channel(2, 4, false);		
-
-	EIC->CTRL.bit.ENABLE = 1;
-	while(EIC->STATUS.bit.SYNCBUSY);
-}
-
-void config_evsys() {
-	PM->APBCMASK.reg |= PM_APBCMASK_EVSYS;
-	GCLK->CLKCTRL.reg = GCLK_CLKCTRL_ID(EVSYS_GCLK_ID_0) |
-	GCLK_CLKCTRL_CLKEN |
-	GCLK_CLKCTRL_GEN(0);
-	while(GCLK->STATUS.bit.SYNCBUSY);
-
-	EVSYS->CTRL.bit.SWRST = 1;
-	while(EVSYS->CTRL.bit.SWRST);
-
-	// Event receiver
-	EVSYS->USER.reg = EVSYS_USER_CHANNEL(1) | // Set channel n-1
-	EVSYS_USER_USER(EVSYS_ID_USER_TCC1_EV_1); // Match/Capture 1 on TCC1
-	// Event channel
-	EVSYS->CHANNEL.reg = EVSYS_CHANNEL_CHANNEL(0) | // Set channel n
-	EVSYS_CHANNEL_PATH_ASYNCHRONOUS |
-	EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_EIC_EXTINT_2) |
-	EVSYS_CHANNEL_EDGSEL_BOTH_EDGES; // Detect both edges
-	// Wait channel to be ready
-	while(!EVSYS->CHSTATUS.bit.USRRDY0);
-	// EVSYS is always enabled
-}
-
-void gpio_in(int port, int pin)	{
-	PORT->Group[port].DIRCLR.reg = (1 << pin);
-	PORT->Group[port].PINCFG[pin].reg |= PORT_PINCFG_INEN;
-}
-
-void gpio_pmuxen(int port, int pin, int mux) {
-	PORT->Group[port].PINCFG[pin].reg |= PORT_PINCFG_PMUXEN;
-	if (pin & 1)
-		PORT->Group[port].PMUX[pin>>1].bit.PMUXO = mux;
-	else
-		PORT->Group[port].PMUX[pin>>1].bit.PMUXE = mux;
-}
-
-void config_gpio() {
-	gpio_in(1, 2);
-	gpio_pmuxen(1, 2, PINMUX_PB02A_EIC_EXTINT2);
-}
-
 
 
 
@@ -821,10 +363,8 @@ int main (void)
 
 	} else if(esc_comms == COMMS_UART){
 		configure_vesc_usart();
-		//configure_vesc_usart_callbacks();
 
 		vesc_uart_expected_bytes = VESC_UART_BYTES_START;  // Start listening for start byte
-		//usart_read_buffer_job(&vesc_usart, &vesc_revieve_packet.start, (uint16_t)1);
 		usart_read_buffer_job(&vesc_usart, vesc_USART_read_buffer, MAX_PAYLOAD_LEN+6);
 	}
 	
@@ -865,7 +405,7 @@ int main (void)
 	int BLE_TX_INDEX = 0;
 	uint16_t BLE_TX_DELAY = 15;
 	uint32_t BLE_TX_TIME = 0;
-	uint32_t BLE_DUMMY_TIME = 0;
+	//uint32_t BLE_DUMMY_TIME = 0;
 
 	mcconf_limits.max_erpm = 1000000;
 	mcconf_limits.min_erpm = -1000000;
@@ -971,7 +511,7 @@ int main (void)
 		
 		if(BLE_TX_TIME>millis())
 			BLE_TX_TIME = 0;
-		if(SEND_CONTINUOUS && app_remote_check == 0 &&((millis()-BLE_TX_TIME) >= BLE_TX_DELAY))
+		if(SEND_CONTINUOUS && app_remote_check == 0 && ((millis()-BLE_TX_TIME) >= BLE_TX_DELAY) && usart_get_job_status(&ble_usart, USART_TRANSCEIVER_TX) != STATUS_BUSY)
 		{
 			switch(BLE_TX_INDEX){
 				case 0:
@@ -994,7 +534,7 @@ int main (void)
 					ble_write_buffer[16] = (latest_vesc_vals.rpm & 0xFF);
 					ble_write_buffer[17] = (latest_vesc_vals.rpm & 0xFF00) >> 8;
 					ble_write_buffer[18] = (latest_vesc_vals.rpm & 0xFF0000) >> 16;
-					usart_write_buffer_wait(&ble_usart, ble_write_buffer, 19);
+					usart_write_buffer_job(&ble_usart, ble_write_buffer, 19);
 					break;
 				case 1:
 					ble_write_buffer[0] = 0x17;
@@ -1017,7 +557,7 @@ int main (void)
 					ble_write_buffer[17] = latest_vesc_vals.fault;
 					ble_write_buffer[18] = 0x21;
 					ble_write_buffer[19] = remote_x;
-					usart_write_buffer_wait(&ble_usart, ble_write_buffer, 20);
+					usart_write_buffer_job(&ble_usart, ble_write_buffer, 20);
 					break;
 				case 2:
 					ble_write_buffer[0] = 0x2E;
@@ -1039,7 +579,7 @@ int main (void)
 					ble_write_buffer[16] = 0x27;
 					ble_write_buffer[17] = ((uint16_t)(gxKalman*10) & 0xFF); // Gyro X
 					ble_write_buffer[18] = ((uint16_t)(gxKalman*10) & 0xFF00) >> 8; // Gyro X
-					usart_write_buffer_wait(&ble_usart, ble_write_buffer, 19);
+					usart_write_buffer_job(&ble_usart, ble_write_buffer, 19);
 					break;
 				case 3:
 					ble_write_buffer[0] = 0x28;
@@ -1061,7 +601,7 @@ int main (void)
 					ble_write_buffer[16] = ((int)(light_sens) & 0xFF); // Light Sensor
 					ble_write_buffer[17] = ((int)(light_sens) & 0xFF00) >> 8; // Light Sensor
 					ble_write_buffer[18] = 0xDE;
-					usart_write_buffer_wait(&ble_usart, ble_write_buffer, 19);
+					usart_write_buffer_job(&ble_usart, ble_write_buffer, 19);
 					break;
 			}
 			BLE_TX_INDEX++;
@@ -1074,8 +614,8 @@ int main (void)
 		{
 			// Use a dummy delay that mimics the delay of the BLE send
 			// commands to keep the timing of the light sections the same
-			while((millis()-BLE_DUMMY_TIME) < BLE_TX_DELAY + (1.0/BLE_BAUD)*20.0){}
-			BLE_DUMMY_TIME = millis();
+			//while((millis()-BLE_DUMMY_TIME) < BLE_TX_DELAY + (1.0/BLE_BAUD)*20.0){}
+			//BLE_DUMMY_TIME = millis();
 		}
 
 		
@@ -1465,10 +1005,10 @@ int main (void)
 				{
 					if(axKalman < 0){
 						output_brightness = axKalman/kalmanAX_min;
-						SUPRESS_LEFT_RGB = true;
+						SUPRESS_RIGHT_RGB = true;
 					} else{
 						output_brightness = axKalman/kalmanAX_max;
-						SUPRESS_RIGHT_RGB = true;
+						SUPRESS_LEFT_RGB = true;
 					}
 					break;
 				}

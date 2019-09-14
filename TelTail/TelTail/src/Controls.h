@@ -102,15 +102,90 @@ enum AUX_CONTROLS{
 
 // This function is used to handle all control inputs
 // Input types include:	App commands
-//						Button Presses from coms based remotes (Nunchuck, Firefly-TBI)
+//						Button Presses from coms based remotes (Nunchuck, Feather Remote)
 //						Button Presses from PPM remote
 void HandleUserInput(void);
 int get_pulse_width(void);
+void config_eic_channel(int ch, int sense, bool filt);
+void config_eic(void);
+void config_evsys(void);
+void gpio_in(int port, int pin);
+void gpio_pmuxen(int port, int pin, int mux);
+void config_gpio(void);
 
 
+/* Sense: 
+ * None, Rise, Fall, Both, High, Low
+ * 0x0	 0x1   0x2	 0x3   0x4   0x5
+ */
+void config_eic_channel(int ch, int sense, bool filt) {
+	// Config channel
+	EIC->CONFIG[ch/8].reg &= ~(0xF << 4*(ch%8));
+	EIC->CONFIG[ch/8].reg |= (0xF & ((filt? 0x8 : 0) | (0x7 & sense))) << 4*(ch%8);
+	// No wake-up
+	EIC->WAKEUP.reg &= ~(1 << ch);	
+	// No interrupt
+	EIC->INTENCLR.reg |= 1<<ch;
+	// Generate Event 
+	EIC->EVCTRL.reg |= 1<<ch;
+}
+
+void config_eic() {
+PM->APBAMASK.reg |= PM_APBAMASK_EIC;
+GCLK->CLKCTRL.reg = GCLK_CLKCTRL_ID(EIC_GCLK_ID) |
+GCLK_CLKCTRL_CLKEN |
+GCLK_CLKCTRL_GEN(0);
+EIC->CTRL.reg = EIC_CTRL_SWRST;
+while(EIC->CTRL.bit.SWRST && EIC->STATUS.bit.SYNCBUSY);
+config_eic_channel(2, 4, false);
+
+EIC->CTRL.bit.ENABLE = 1;
+while(EIC->STATUS.bit.SYNCBUSY);
+}
+
+void config_evsys() {
+	PM->APBCMASK.reg |= PM_APBCMASK_EVSYS;
+	GCLK->CLKCTRL.reg = GCLK_CLKCTRL_ID(EVSYS_GCLK_ID_0) |
+	GCLK_CLKCTRL_CLKEN |
+	GCLK_CLKCTRL_GEN(0);
+	while(GCLK->STATUS.bit.SYNCBUSY);
+
+	EVSYS->CTRL.bit.SWRST = 1;
+	while(EVSYS->CTRL.bit.SWRST);
+
+	// Event receiver
+	EVSYS->USER.reg = EVSYS_USER_CHANNEL(1) | // Set channel n-1
+	EVSYS_USER_USER(EVSYS_ID_USER_TCC1_EV_1); // Match/Capture 1 on TCC1
+	// Event channel
+	EVSYS->CHANNEL.reg = EVSYS_CHANNEL_CHANNEL(0) | // Set channel n
+	EVSYS_CHANNEL_PATH_ASYNCHRONOUS |
+	EVSYS_CHANNEL_EVGEN(EVSYS_ID_GEN_EIC_EXTINT_2) |
+	EVSYS_CHANNEL_EDGSEL_BOTH_EDGES; // Detect both edges
+	// Wait channel to be ready
+	while(!EVSYS->CHSTATUS.bit.USRRDY0);
+	// EVSYS is always enabled
+}
+
+void gpio_in(int port, int pin)	{
+	PORT->Group[port].DIRCLR.reg = (1 << pin);
+	PORT->Group[port].PINCFG[pin].reg |= PORT_PINCFG_INEN;
+}
+
+void gpio_pmuxen(int port, int pin, int mux) {
+	PORT->Group[port].PINCFG[pin].reg |= PORT_PINCFG_PMUXEN;
+	if (pin & 1)
+	PORT->Group[port].PMUX[pin>>1].bit.PMUXO = mux;
+	else
+	PORT->Group[port].PMUX[pin>>1].bit.PMUXE = mux;
+}
+
+void config_gpio() {
+	gpio_in(1, 2);
+	gpio_pmuxen(1, 2, PINMUX_PB02A_EIC_EXTINT2);
+}
 
 //uint16_t light_sens = 0; // for PWM debugging
-int get_pulse_width() {
+inline int get_pulse_width() {
 	return TCC1->CC[0].bit.CC;
 }
 
@@ -137,7 +212,7 @@ void HandleUserInput()
 			READ_VESC_CHUCK = true;
 			remote_y = rec_chuck_struct.js_y;
 			if(remote_type == REMOTE_UART_DUAL)
-				remote_x;
+				remote_x = rec_chuck_struct.js_x;
 			else
 				remote_x = 255/2;
 			break;
@@ -168,9 +243,11 @@ void HandleUserInput()
 			}
 			break;
 		case BTN_UART_C:
+			READ_VESC_CHUCK = true;
 			remote_btn_state = rec_chuck_struct.bt_c;
 			break;	
 		case BTN_UART_Z:
+			READ_VESC_CHUCK = true;
 			remote_btn_state = rec_chuck_struct.bt_z;
 			break;
 		case BTN_THROTTLE_DWN:
@@ -261,46 +338,46 @@ void HandleUserInput()
 	//////////////////////   Handle the aux output   /////////////////////
 	//////////////////////////////////////////////////////////////////////
 	if(AUX_ENABLED){
-		switch(auxControlType){
-			case AUX_MOMENTARY:
+		if(!AppAuxButton){
+			switch(auxControlType){
+				case AUX_MOMENTARY:
 				if(ButtonHeldTime > 500){
 					AUX_OUTPUT = true;
-				} else {
+					} else {
 					AUX_OUTPUT = false;
 				}
 				break;
-			case AUX_TOGGLED:
+				case AUX_TOGGLED:
 				if((remote_type != REMOTE_UART_DUAL && single_aux_control == ButtonPressType)
-					|| (remote_type == REMOTE_UART_DUAL && dual_aux_control == ButtonPressType)) {
+				|| (remote_type == REMOTE_UART_DUAL && dual_aux_control == ButtonPressType)) {
 					AUX_OUTPUT = !AUX_OUTPUT;
 				}
 				break;
-			case AUX_TIMED:
+				case AUX_TIMED:
 				if((remote_type != REMOTE_UART_DUAL && single_aux_control == ButtonPressType)
-					|| (remote_type == REMOTE_UART_DUAL && dual_aux_control == ButtonPressType)) {
+				|| (remote_type == REMOTE_UART_DUAL && dual_aux_control == ButtonPressType)) {
 					AUX_OUTPUT = true;
 					AuxOnTime = millis();
 				}
 
 				check_time(&AuxOnTime);
 				if(AUX_OUTPUT == true && ((millis() - AuxOnTime) >= (auxTimedDuration * 100)))
-					AUX_OUTPUT = false;
+				AUX_OUTPUT = false;
 				break;
-			case AUX_PATTERN:
+				case AUX_PATTERN:
 				break;
-		}
-
-		if(AppAuxButton == 1 && lAppAuxButton == 0) {
+			}
+		} else if(AppAuxButton == 1 && lAppAuxButton == 0) {
 			AUX_OUTPUT = true;
 		} else if(AppAuxButton == 0 && lAppAuxButton == 1){
 			AUX_OUTPUT = false;
 		}
 		lAppAuxButton = AppAuxButton;
 
-		port_pin_set_output_level(AUX_PIN, !AUX_OUTPUT);
+		setAux(!AUX_OUTPUT);
 	}
 	else{
-		port_pin_set_output_level(AUX_PIN, true);
+		setAux(true);
 	}
 
 	/////////////   Handle the side, head, and tail lights   /////////////

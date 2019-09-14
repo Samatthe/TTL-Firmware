@@ -174,74 +174,6 @@ enum VESC_UART_BYTES{
 	VESC_UART_BYTES_CRC,
 	VESC_UART_BYTES_STOP,
 };
-// The callback routine for when a BLE message is recieved
-/*void vesc_usart_read_callback(struct usart_module *const usart_module)
-{
-	switch(vesc_uart_expected_bytes){
-		case VESC_UART_BYTES_START:
-			vesc_uart_expected_bytes = VESC_UART_BYTES_LEN;
-			if(vesc_revieve_packet.start == 0x02)
-				usart_read_buffer_job(&vesc_usart, vesc_revieve_packet.len, (uint16_t)1);
-			else if(vesc_revieve_packet.start == 0x03)
-				usart_read_buffer_job(&vesc_usart, vesc_revieve_packet.len, (uint16_t)2);
-			else {
-				vesc_uart_expected_bytes = VESC_UART_BYTES_START;
-				usart_read_buffer_job(&vesc_usart, &vesc_revieve_packet.start, (uint16_t)1);
-			}
-
-			vesc_revieve_packet.len[0] = 0;
-			vesc_revieve_packet.len[1] = 0;
-			vesc_revieve_packet.crc[0] = 0;
-			vesc_revieve_packet.crc[1] = 0;
-
-			len_bytes = vesc_revieve_packet.start-1;
-			corrupted = false;
-			break;
-		case VESC_UART_BYTES_LEN:
-			if(vesc_revieve_packet.start == 0x02)
-				packet_len = vesc_revieve_packet.len[0];
-			else
-				packet_len = ((vesc_revieve_packet.len[0]<<8)|vesc_revieve_packet.len[1]);
-
-			vesc_uart_expected_bytes = VESC_UART_BYTES_PAYLOAD;
-			usart_read_buffer_job(&vesc_usart, vesc_revieve_packet.payload, (uint16_t)packet_len);
-			break;
-		case VESC_UART_BYTES_PAYLOAD:
-			vesc_uart_expected_bytes = VESC_UART_BYTES_CRC;
-			usart_read_buffer_job(&vesc_usart, vesc_revieve_packet.crc, (uint16_t)2);
-			break;
-		case VESC_UART_BYTES_CRC:{
-			uint16_t crc_check = crc16(vesc_revieve_packet.payload, packet_len);
-			if(crc_check != (uint16_t)((vesc_revieve_packet.crc[0]<<8)|vesc_revieve_packet.crc[1])){
-				corrupted = true;
-			}
-	
-			vesc_uart_expected_bytes = VESC_UART_BYTES_STOP;
-			usart_read_buffer_job(&vesc_usart, &vesc_revieve_packet.stop, (uint16_t)1);
-			break;}
-		case VESC_UART_BYTES_STOP:
-			if(vesc_revieve_packet.stop == 0x03 && !corrupted) {
-				process_recieved_packet();
-			}
-		
-			vesc_usart_time = millis();
-			HOLD_FOR_REPLY = false;
-		
-			vesc_uart_expected_bytes = VESC_UART_BYTES_START;
-			usart_read_buffer_job(&vesc_usart, &vesc_revieve_packet.start, (uint16_t)1);
-			break;
-		default:
-			break;
-	}
-}
-
-
-// Configure SERCOM callback for receiving a buffer frame
-void configure_vesc_usart_callbacks(void)
-{
-	usart_register_callback(&vesc_usart, vesc_usart_read_callback, USART_CALLBACK_BUFFER_RECEIVED);
-	usart_enable_callback(&vesc_usart, USART_CALLBACK_BUFFER_RECEIVED);
-}*/
 
 uint8_t vesc_tx_buff[MAX_PAYLOAD_LEN+6];
 void send_packet(struct uart_packet send_pak){
@@ -750,7 +682,7 @@ void detect_vesc_firmware(){
 	}
 }
 
-bool CHECK_BUFFER(uint8_t *buf){
+inline bool CHECK_BUFFER(uint8_t *buf){
 	return (((buf[0] == 0x2) && (buf[buf[1]+4] == 0x3)) || ((buf[0] == 0x3) && (buf[((buf[1]<<8)|buf[2])+5] == 0x3)));
 }
 

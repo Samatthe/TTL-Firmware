@@ -22,16 +22,28 @@
 
 ///////////////////   LED Variables   //////////////////
 ////////////////////////////////////////////////////////
-enum modes{
-	MODE_STATIC = 0,
-	MODE_COLOR_CYCLE = 1,
-	MODE_COMPASS_CYCLE = 2,
-	MODE_THROTTLE = 3,
-	MODE_RPM_CYCLE = 4,
-	MODE_RPM_THROTTLE = 5,
-	MODE_X_ACCEL = 6,
-	MODE_Y_ACCEL = 7,
-	MODE_CUSTOM = 8
+enum modes_analog{
+	MODE_ANALOG_STATIC = 0,
+	MODE_ANALOG_COLOR_CYCLE = 1,
+	MODE_ANALOG_COMPASS_CYCLE = 2,
+	MODE_ANALOG_THROTTLE = 3,
+	MODE_ANALOG_RPM_CYCLE = 4,
+	MODE_ANALOG_RPM_THROTTLE = 5,
+	MODE_ANALOG_X_ACCEL = 6,
+	MODE_ANALOG_Y_ACCEL = 7,
+	MODE_ANALOG_CUSTOM = 8
+} ;
+
+enum modes_digital{
+	MODE_DIGITAL_STATIC = 0,
+	MODE_DIGITAL_SKITTLES = 1,
+	MODE_DIGITAL_GRADIENT_CYCLE = 2,
+	MODE_DIGITAL_COMPASS_CYCLE = 3,
+	MODE_DIGITAL_THROTTLE = 4,
+	MODE_DIGITAL_RPM_CYCLE = 5,
+	MODE_DIGITAL_RPM_THROTTLE = 6,
+	MODE_DIGITAL_COMPASS_WHEEL = 7,
+	MODE_DIGITAL_COMPASS_SNAKE = 8
 } ;
 
 enum  rate_bases{
@@ -71,6 +83,22 @@ enum color_bases{
 	COLOR_Z_ACCEL = 10
 };
 
+enum RGB_types{
+	RGB_ANALOG = 0,
+	RGB_DIGITAL_APA102 = 1,
+	RGB_DIGITAL_SK9822 = 2,
+	RGB_NONE = 3
+};
+
+enum BRAKE_type{
+	BRAKE_FADE = 0,
+	BRAKE_BLINK = 1,
+	BRAKE_FADE_BLINK = 2,
+	BRAKE_BLINK_FADE = 3,
+	BRAKE_FADING_BLINK = 4,
+	BRAKE_PACED_BLINK = 5
+};
+
 struct RGB_Vals{
 	uint16_t LR;
 	uint16_t LG;
@@ -80,7 +108,10 @@ struct RGB_Vals{
 	uint16_t RB;
 };
 
-#define AUX_PIN PIN_PA08
+#define HORN_PIN PIN_PA08
+#if defined(HW_4v1)
+	#define STAT_LED PIN_PB03
+#endif
 
 // Mode Vars
 const uint8_t light_modes = 9; // number of light modes, one indexed
@@ -93,6 +124,21 @@ float Brightness[9] = {0,0.25,0.5,0.5,0.5,0.5,0.5,0.5,0.5};
 uint8_t ColorBase[9] = {0,1,2,7,1,7,9,10,1};
 uint8_t BrightBase[9] = {255,0,0,0,3,3,0,0,2};
 uint8_t RateBase[9] = {255,0,255,0,0,255,0,0,3};
+uint8_t Digital_Static_Zoom = 1;
+uint8_t Digital_Static_Shift = 50;
+uint8_t Digital_Static_Brightness = 50;
+uint8_t Digital_Skittles_Brightness = 50;
+uint8_t Digital_Cycle_Zoom = 1;
+uint8_t Digital_Cycle_Rate = 50;
+uint8_t Digital_Cycle_Brightness = 50;
+uint8_t Digital_Compass_Brightness = 50;
+uint8_t Digital_Throttle_Zoom = 1;
+uint8_t Digital_Throttle_Shift = 50;
+uint8_t Digital_Throttle_Sens = 50;
+uint8_t Digital_Throttle_Brightness = 50;
+uint8_t Digital_RPM_Zoom = 7;
+uint8_t Digital_RPM_Rate = 50;
+uint8_t Digital_RPM_Brightness = 50;
 struct RGB_Vals Custom_RGB = {32767,16384,52428,0,52428,39321};
 
 // Ouput Vars
@@ -101,6 +147,9 @@ uint16_t brake_offset = 0x0B00;
 struct RGB_Vals RGB_Ouptut = {0,0,0,0,0,0};
 bool SUPRESS_LEFT_RGB = false;
 bool SUPRESS_RIGHT_RGB = false;
+bool SYNC_RGB = true;
+bool BRAKE_ALWAYS_ON = true;
+uint8_t brake_light_mode = BRAKE_FADE;
 
 // Bools
 uint8_t HEADLIGHTS = 0; // head/tail light enable bool
@@ -121,4 +170,39 @@ float max_cycle_rate = 7500;
 uint32_t strobe_time = 0;
 uint16_t strobe_on_dur = 50;
 uint16_t strobe_off_dur = 500;
+
+// Analog LED vars
+
+// Digital LED vars
+enum DIGITAL_STRIP_TYPE{
+	WS2812 = 0,
+	APA102
+};
+
+uint8_t RGB_led_type;
+uint8_t configured_RGB_led_type;
+
+bool DIGITAL_OFF = false;
+
+#define MAX_LEDCOUNT 72
+
+uint8_t led_num = 30;
+uint8_t current_led_num = 0;
+uint8_t digital_refresh_rate = 10; //Hz
+uint32_t digital_refresh_time = 0;
+
+#define L_GND PIN_PA07
+#define R_GND PIN_PA14
+
+uint8_t L_SPI_send_buf[(MAX_LEDCOUNT*4)+8];
+uint8_t R_SPI_send_buf[(MAX_LEDCOUNT*4)+8];
+
+
+struct spi_module L_LED_SPI_instance;
+struct spi_module R_LED_SPI_instance;
+
+
+const uint8_t brightness = 10;
+uint8_t DIGITAL_STRIP = APA102;
+
 #endif

@@ -102,9 +102,12 @@ struct chuck_data send_chuck_struct;
 struct chuck_data rec_chuck_struct;
 bool READ_VESC_PWM = false;
 bool READ_VESC_CHUCK = false;
+bool SEND_VESC_CHUCK = false;
 bool READ_VESC_VALS = false;
 bool READ_VESC_FW = false;
 bool VESC_PACKET_RECIEVED = false;
+bool ESC_UART_CONFIGED = false;
+bool ESC_UART_PIN_CONFIG = false;
 
 ///////////   VESC Communication Variables   ///////////
 ////////////////////////////////////////////////////////
@@ -129,6 +132,8 @@ void detect_vesc_firmware(void);
 struct uart_packet recieve_packet(void);
 bool CHECK_BUFFER(uint8_t *buf);
 void read_vesc_packet(void);
+void detect_esc_baud_pins(void);
+bool CHECK_FOR_NOISE(struct usart_module *const module, uint8_t buf[MAX_PAYLOAD_LEN+6], uint16_t max_size);
 
 float buffer_get_float32_auto(uint8_t *buffer, int8_t index);
 
@@ -149,11 +154,23 @@ void configure_vesc_usart()
 	struct usart_config config_usart;
 	usart_get_config_defaults(&config_usart);
 	config_usart.baudrate    = baud;
+#ifdef HW_3v4
 	config_usart.mux_setting = USART_RX_1_TX_0_XCK_1;
 	config_usart.pinmux_pad0 = PINMUX_PA16C_SERCOM1_PAD0;
 	config_usart.pinmux_pad1 = PINMUX_PA17C_SERCOM1_PAD1;
 	config_usart.pinmux_pad2 = PINMUX_UNUSED;
 	config_usart.pinmux_pad3 = PINMUX_UNUSED;
+#endif
+#if  defined(HW_4v0)|| defined(HW_4v1)
+	if(ESC_UART_PIN_CONFIG)
+		config_usart.mux_setting = USART_RX_2_TX_0_XCK_1;
+	else
+		config_usart.mux_setting = USART_RX_0_TX_2_XCK_3;
+	config_usart.pinmux_pad0 = PINMUX_PA16C_SERCOM1_PAD0;
+	config_usart.pinmux_pad1 = PINMUX_UNUSED;
+	config_usart.pinmux_pad2 = PINMUX_PA18C_SERCOM1_PAD2;
+	config_usart.pinmux_pad3 = PINMUX_UNUSED;
+#endif
 	while (usart_init(&vesc_usart,SERCOM1, &config_usart) != STATUS_OK)
 	{}
 	usart_enable(&vesc_usart);
@@ -204,7 +221,7 @@ void send_packet(struct uart_packet send_pak){
 		}
 		
 		HOLD_FOR_REPLY = true;
-		usart_write_buffer_wait(&vesc_usart, vesc_tx_buff, message_len);
+		usart_write_buffer_job(&vesc_usart, vesc_tx_buff, message_len);
 		vesc_usart_time = millis();
 	}
 }
@@ -274,13 +291,17 @@ void process_recieved_packet(){
 		} else if(packet_id == COMM_GET_DECODED_PPM){
 			latest_vesc_vals.pwm_val = (int32_t)(((vesc_revieve_packet.payload[1]&0x00FF)<<24)|((vesc_revieve_packet.payload[2]&0x00FF)<<16)|((vesc_revieve_packet.payload[3]&0x00FF)<<8)|(vesc_revieve_packet.payload[4]&0x00FF));
 		} else if(packet_id == COMM_GET_DECODED_CHUK){
-			rec_chuck_struct.js_x = vesc_revieve_packet.payload[1];
-			rec_chuck_struct.js_y = vesc_revieve_packet.payload[2];
-			rec_chuck_struct.bt_c = vesc_revieve_packet.payload[3];
-			rec_chuck_struct.bt_z = vesc_revieve_packet.payload[4];
-			rec_chuck_struct.acc_x = (int16_t)(((vesc_revieve_packet.payload[5] & 0x00FF) << 8)|(vesc_revieve_packet.payload[6] & 0x00FF));
-			rec_chuck_struct.acc_y = (int16_t)(((vesc_revieve_packet.payload[7] & 0x00FF) << 8)|(vesc_revieve_packet.payload[8] & 0x00FF));
-			rec_chuck_struct.acc_z = (int16_t)(((vesc_revieve_packet.payload[9] & 0x00FF) << 8)|(vesc_revieve_packet.payload[10] & 0x00FF));
+			//if(button_type == BTN_UART_C){
+				rec_chuck_struct.bt_c = ((((vesc_revieve_packet.payload[1] & 0x000000FF) << 24)|((vesc_revieve_packet.payload[2] & 0x000000FF) << 16)|((vesc_revieve_packet.payload[3] & 0x000000FF) << 8)|(vesc_revieve_packet.payload[4] & 0x000000FF)) == 0xFFF0DC45); //-992187
+				rec_chuck_struct.bt_z = rec_chuck_struct.bt_c;
+			//}
+			//rec_chuck_struct.js_x = vesc_revieve_packet.payload[1];
+			//remote_y = vesc_revieve_packet.payload[2];
+			//rec_chuck_struct.bt_c = vesc_revieve_packet.payload[3];
+			//rec_chuck_struct.bt_z = vesc_revieve_packet.payload[4];
+			//rec_chuck_struct.acc_x = (int16_t)(((vesc_revieve_packet.payload[5] & 0x00FF) << 8)|(vesc_revieve_packet.payload[6] & 0x00FF));
+			//rec_chuck_struct.acc_y = (int16_t)(((vesc_revieve_packet.payload[7] & 0x00FF) << 8)|(vesc_revieve_packet.payload[8] & 0x00FF));
+			//rec_chuck_struct.acc_z = (int16_t)(((vesc_revieve_packet.payload[9] & 0x00FF) << 8)|(vesc_revieve_packet.payload[10] & 0x00FF));
 		} else if(packet_id == COMM_GET_VALUES_SELECTIVE){ // Only available in latest Official FW
 			latest_vesc_vals.temp_fet_filtered = (vesc_revieve_packet.payload[5] << 8) | vesc_revieve_packet.payload[6];
 			latest_vesc_vals.avg_motor_current = (vesc_revieve_packet.payload[7] << 24) | (vesc_revieve_packet.payload[8] << 16) | (vesc_revieve_packet.payload[9] << 8) | vesc_revieve_packet.payload[10];
@@ -386,16 +407,19 @@ void vesc_send_alive(){
 }
 
 void vesc_get_pwm(){
-	struct uart_packet send_pack;
+	if(!SEND_VESC_CHUCK)
+	{
+		struct uart_packet send_pack;
 
-	send_pack.start = 0x02;
-	send_pack.len[0] = 0x01;
-	send_pack.payload[0] = COMM_GET_DECODED_PPM;
-	uint16_t crc = crc16(send_pack.payload, 1);
-	send_pack.crc[0] = (uint8_t)((crc&0xFF00)>>8);
-	send_pack.crc[1] = (uint8_t)(crc&0x00FF);
+		send_pack.start = 0x02;
+		send_pack.len[0] = 0x01;
+		send_pack.payload[0] = COMM_GET_DECODED_PPM;
+		uint16_t crc = crc16(send_pack.payload, 1);
+		send_pack.crc[0] = (uint8_t)((crc&0xFF00)>>8);
+		send_pack.crc[1] = (uint8_t)(crc&0x00FF);
 
-	send_packet(send_pack);
+		send_packet(send_pack);
+	}
 }
 
 void vesc_get_chuck(){
@@ -432,6 +456,7 @@ void vesc_set_chuck(){
 	send_pack.crc[1] = (uint8_t)(crc&0x00FF);
 
 	send_packet(send_pack);
+	HOLD_FOR_REPLY = false;
 }
 
 void vesc_get_imu(){
@@ -479,10 +504,17 @@ void vesc_read_all(){
 		break;
 		case 3:
 		if(!READ_VESC_CHUCK){
+			read_index++;
+		} else if(!HOLD_FOR_REPLY){
+			read_index++;
+			vesc_get_chuck();
+		}
+		case 4:
+		if(!SEND_VESC_CHUCK){
 			read_index=0;
 		} else if(!HOLD_FOR_REPLY){
 			read_index=0;
-			vesc_get_chuck();
+			vesc_set_chuck();
 		}
 		break;
 	}
@@ -688,6 +720,7 @@ inline bool CHECK_BUFFER(uint8_t *buf){
 
 void read_vesc_packet(void){
 	if(CHECK_BUFFER(vesc_USART_read_buffer)){
+		//ERROR_LEDs(0);
 		VESC_PACKET_RECIEVED = true;
 
 		if(vesc_USART_read_buffer[0] == 0x2){
@@ -717,10 +750,82 @@ void read_vesc_packet(void){
 		usart_abort_job(&vesc_usart, USART_TRANSCEIVER_RX);
 		// Start listening to the ESC UART
 		usart_read_buffer_job(&vesc_usart, vesc_USART_read_buffer, MAX_PAYLOAD_LEN+6);
+	} else if(CHECK_FOR_NOISE(&vesc_usart, vesc_USART_read_buffer, MAX_PAYLOAD_LEN+6)){
+		//Stop listening to the BLE UART
+		usart_abort_job(&vesc_usart, USART_TRANSCEIVER_RX);
+		memset(vesc_USART_read_buffer, 0, MAX_PAYLOAD_LEN+6);
+		uint32_t temp_timer = millis();
+		while(millis() - temp_timer < 10){}
+		// Start listening to the BLE UART
+		usart_read_buffer_job(&vesc_usart, vesc_USART_read_buffer, MAX_PAYLOAD_LEN+6);
 	}
 
 	if(VESC_PACKET_RECIEVED){
 		process_recieved_packet();
 	}
+}
+
+detect_esc_baud_pins(void){
+	static uint32_t wait_time = 0;
+	static uint32_t send_delay = 15;
+	static uint32_t recieve_delay = 50;
+	static bool CONFIG_PACKET_SENT = false;
+	static bool DISABLE_UART = true;
+
+	if(!ESC_UART_CONFIGED){
+		if(DISABLE_UART){
+			usart_disable(&vesc_usart);
+			wait_time = millis();
+			DISABLE_UART = false;
+		}
+		check_time(&wait_time);
+		if(!CONFIG_PACKET_SENT && (millis()-wait_time) > send_delay){ // Pause 5ms
+
+			// Configure the VESC UART with a new buad rate
+			UART_baud++;
+			if(UART_baud > BAUD_115200){
+				UART_baud = BAUD_9600;
+				ESC_UART_PIN_CONFIG = !ESC_UART_PIN_CONFIG;
+			}
+			configure_vesc_usart();
+
+			//port_pin_set_output_level(STATUS_LED, true); // TODO: Add status LED
+
+			// Start listening for responses
+			usart_read_buffer_job(&vesc_usart, vesc_USART_read_buffer, MAX_PAYLOAD_LEN+6);
+
+			// Dont wait for the normal send timeout to expire
+			HOLD_FOR_REPLY = false;
+			// Request FW version
+			vesc_get_fw_version();
+
+			CONFIG_PACKET_SENT = true;
+
+			wait_time = millis();
+		}
+		else if(CONFIG_PACKET_SENT && (millis()-wait_time) > recieve_delay){
+
+			//port_pin_set_output_level(STATUS_LED, false);
+
+			// Check if a response was received
+			if(CHECK_BUFFER(vesc_USART_read_buffer)){
+				ESC_UART_CONFIGED = true;
+				memset(vesc_USART_read_buffer,0,MAX_PAYLOAD_LEN+6);
+				//Stop listening to the ESC UART
+				usart_abort_job(&vesc_usart, USART_TRANSCEIVER_RX);
+				// Start listening to the ESC UART
+				usart_read_buffer_job(&vesc_usart, vesc_USART_read_buffer, MAX_PAYLOAD_LEN+6);
+			}
+			else
+				memset(vesc_USART_read_buffer,0,MAX_PAYLOAD_LEN+6); // Clear the VESC receive buffer
+
+			CONFIG_PACKET_SENT = false;
+			DISABLE_UART = true;
+		}
+	}
+}
+
+bool CHECK_FOR_NOISE(struct usart_module *const module, uint8_t buf[MAX_PAYLOAD_LEN+6], uint16_t max_size){
+	return (buf[0] != 0x02 && buf[0] != 0x03 && buf[0] != 0xA5 && module->remaining_rx_buffer_length != max_size);
 }
 #endif /* CRC_H_ */

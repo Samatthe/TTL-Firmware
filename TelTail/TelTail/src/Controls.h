@@ -23,6 +23,7 @@
 #include "VESC_UART.h"
 #include "Remote_Vars.h"
 #include "Timing.h"
+//#include "BLE_UART.h"
 
 ////////////////   Control Variables   /////////////////
 ////////////////////////////////////////////////////////
@@ -33,6 +34,7 @@ uint8_t VescRemoteX = 0, VescRemoteY = 0;
 bool AUX_ENABLED = false;
 bool TURN_ENABLED = false;
 bool AUX_OUTPUT = false;
+bool NEW_REMOTE_DATA = false;
 
 uint8_t auxControlType = 0;
 uint8_t auxTimedDuration = 0;
@@ -56,6 +58,8 @@ uint8_t ButtonPressType = 0;
 uint8_t REMOTE_TYPE = 1;
 bool tapSequence = 0;
 uint8_t tapIndex = 0;
+bool AppControlled = false;
+uint8_t AppRemoteY = 128;
 
 uint32_t ButtonHeldTime = 0;
 uint32_t ButtonDownTime = 0;
@@ -112,6 +116,7 @@ void config_evsys(void);
 void gpio_in(int port, int pin);
 void gpio_pmuxen(int port, int pin, int mux);
 void config_gpio(void);
+void HandleAppRemote(void);
 
 
 /* Sense: 
@@ -189,8 +194,6 @@ inline int get_pulse_width() {
 	return TCC1->CC[0].bit.CC;
 }
 
-int pulse_width_last = 0;
-int pulse_width = 0;
 void HandleUserInput()
 {
 	///////////////   Use the appropriate throttle input   ///////////////
@@ -233,13 +236,18 @@ void HandleUserInput()
 			remote_btn_state = port_pin_get_input_level(PPM_IN);
 			break;
 		case BTN_LATCHED_PPM:{
-			pulse_width = get_pulse_width();
-			if(pulse_width > 9000)
-				remote_btn_state = false;
-			else
-				remote_btn_state = true;
-			pulse_width_last = pulse_width;
-			//light_sens = pulse_width; // for debugging pulse width reading
+				static bool FIRST_READ = true;
+				//static int pulse_width = 0;		// For debugging pulse width
+				//pulse_width = get_pulse_width();	// For debugging pulse width
+				if(get_pulse_width() > 9000)
+					remote_btn_state = false;
+				else
+					remote_btn_state = true;
+				if(FIRST_READ){
+					lremote_btn_state = remote_btn_state;
+					FIRST_READ = false;
+				}
+				//light_sens = pulse_width; // for debugging pulse width reading
 			}
 			break;
 		case BTN_UART_C:
@@ -305,6 +313,7 @@ void HandleUserInput()
 			ButtonDownTime = 0;
 		}
 	}
+	lremote_btn_state = remote_btn_state;
 
 	////////   Determine the type of button press that occurred   ////////
 	//////////////////////////////////////////////////////////////////////
@@ -324,8 +333,9 @@ void HandleUserInput()
 			ButtonPressType = LEFT_TAP;
 		else if(remote_type == REMOTE_UART_DUAL && VescRemoteX >= 150 && tapIndex == 1)
 		ButtonPressType = RIGHT_TAP;
-		else if(tapIndex == 1)
+		else if(tapIndex == 1){
 			ButtonPressType = SINGLE_TAP;
+		}
 		else if(tapIndex == 2)
 			ButtonPressType = DOUBLE_TAP;
 		else if(tapIndex == 3)
@@ -374,10 +384,10 @@ void HandleUserInput()
 		}
 		lAppAuxButton = AppAuxButton;
 
-		setAux(!AUX_OUTPUT);
+		setAux(AUX_OUTPUT);
 	}
 	else{
-		setAux(true);
+		setAux(false);
 	}
 
 	/////////////   Handle the side, head, and tail lights   /////////////
@@ -484,8 +494,37 @@ void HandleUserInput()
 			}
 		}
 	}
+}
+
+void HandleAppRemote(){
+	send_chuck_struct.js_x = 0xFF/2;
+	send_chuck_struct.bt_z = false;
+	send_chuck_struct.bt_c = false;
+	send_chuck_struct.acc_x = 0;
+	send_chuck_struct.acc_y = 0;
+	send_chuck_struct.acc_z = 0;
 	
-	lremote_btn_state = remote_btn_state;
+	uint32_t app_remote_soft_timeout = 100;
+	uint32_t app_remote_hard_timeout = 500;
+	static uint32_t app_remote_time = 0;
+
+	check_time(&app_remote_time);
+	if(NEW_REMOTE_DATA){
+		send_chuck_struct.js_y = remote_y = AppRemoteY;
+		app_remote_time = millis();
+		NEW_REMOTE_DATA = false;
+		SEND_VESC_CHUCK = true;
+		//AppControlled = true;
+	} else if(millis()-app_remote_time <= app_remote_soft_timeout){
+		send_chuck_struct.js_y = remote_y = AppRemoteY;
+		SEND_VESC_CHUCK = true;
+	} else if(millis()-app_remote_time <= app_remote_hard_timeout){
+		send_chuck_struct.js_y = remote_y = 0xFF/2;
+		SEND_VESC_CHUCK = true;
+	}
+	else{
+		SEND_VESC_CHUCK = false;
+	}
 }
 
 #endif

@@ -17,18 +17,20 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+
 #include <asf.h>
 #include <string.h>
-#include "IMU.h"
+#include "Config.h"
+#include "IMU_Vars.h"
+#include "IMU_Functions.h"
 #include "Timing.h"
 #include "Remote_Vars.h"
 #include "ESC_Vars.h"
 #include "LED_Vars.h"
 #include "LED_Functions.h"
 #include "Controls.h"
-#include "EEPROM_Functions.h"#include "VESC_UART.h"#include "BLE_UART.h"
+#include "EEPROM_Functions.h"#include "VESC_UART.h"#include "BLE_UART.h"#include "APA102.h"#include "WS2812.h"#include "SK9822.h"
 #include <math.h>
-
 
 ////////////   HW Configuration Variables   ////////////
 ////////////////////////////////////////////////////////
@@ -48,99 +50,20 @@ uint8_t I2C_slave_write_buffer[SLAVE_WRITE_DATA_LENGTH];
 static struct i2c_slave_packet packet;
 
 
-/////////////////   Sensor Variables   /////////////////
-////////////////////////////////////////////////////////
-// Sensor averaging vars
-uint16_t light_sens = 0;
-#define LGHTsamples 150
-#define ACCELsamples 15
-#define GYROsamples 15
-uint16_t LGHTaverage[LGHTsamples];
-int16_t AXaverage[ACCELsamples];
-int16_t AYaverage[ACCELsamples];
-int16_t AZaverage[ACCELsamples];
-//int16_t GXaverage[GYROsamples];
-//int16_t GYaverage[GYROsamples];
-//int16_t GZaverage[GYROsamples];
-unsigned long LGHTtotal = 0;
-long AXtotal = 0;
-long AYtotal = 0;
-long AZtotal = 0;
-//long GXtotal = 0;
-//long GYtotal = 0;
-//long GZtotal = 0;
-
-int16_t avgAX = 0;
-int16_t avgAY = 0;
-int16_t avgAZ = 0;
-float kalmanAX_min = -350;
-float kalmanAX_max = 350;
-float kalmanAY_min = -350;
-float kalmanAY_max = 350;
-float kalmanAZ_min = -350;
-float kalmanAZ_max = 350;
-float kalmanGX_min = -350;
-float kalmanGX_max = 350;
-float kalmanGY_min = -350;
-float kalmanGY_max = 350;
-float kalmanGZ_min = -350;
-float kalmanGZ_max = 350;
-
-// Kalman filter vars
-#define KalmanArraySize 7
-enum kalmans{
-	ax_kalman = 0,
-	ay_kalman = 1,
-	az_kalman = 2,
-	gx_kalman = 3,
-	gy_kalman = 4,
-	gz_kalman = 5,
-	light_kalman = 6
-};
-float err_measure[KalmanArraySize];
-float err_estimate[KalmanArraySize];
-float q[KalmanArraySize];
-float current_estimate[KalmanArraySize];
-float last_estimate[KalmanArraySize];
-float kalman_gain[KalmanArraySize];
-float axKalman = 0;
-float ayKalman = 0;
-float azKalman = 0;
-float gxKalman = 0;
-float gyKalman = 0;
-float gzKalman = 0;
-
-
 /////   Function Definitions and System Structs   //////
 ////////////////////////////////////////////////////////
 struct i2c_slave_module i2c_slave_instance;
-struct adc_module adc1;
 
 // Initialization functions
 void configure_ADC(void);
-void configure_i2c_master(void);
 void configure_port_pins(void);
 void configure_i2c_slave(void);
 void number_to_string(uint32_t, char *);
 void configure_i2c_slave_callbacks(void);
 void i2c_write_request_callback(struct i2c_slave_module *const module);
-void initKalman(float meas, float est, float _q);
 void i2c_read_request_callback(struct i2c_slave_module *const module);
 void configure_eeprom(void);
 
-// Long-itude peripherals 
-void getLightSens(uint16_t* light_val);
-char sensorControl(void);
-char lightControlHead(void);
-char lightControlSide(void);
-int16_t averageAZ(void);
-int16_t averageAY(void);
-int16_t averageAX(void);
-
-// Utility Functions
-float getRoll(void);
-float getPitch(void);
-float updateKalman(float meas, int kalmanIndex);
 
 // Configure the light sensor port as an input
 void configure_ADC(void)
@@ -169,6 +92,18 @@ void configure_port_pins(void)
 	struct port_config config_port_pin;
 	port_get_config_defaults(&config_port_pin);
 	
+	if(RGB_led_type == RGB_DIGITAL_APA102 || RGB_led_type == RGB_DIGITAL_SK9822){
+		config_port_pin.powersave = false;
+		config_port_pin.direction = PORT_PIN_DIR_OUTPUT;
+		port_pin_set_config(L_GND, &config_port_pin);
+		port_pin_set_output_level(L_GND,false);
+
+		config_port_pin.powersave = false;
+		config_port_pin.direction = PORT_PIN_DIR_OUTPUT;
+		port_pin_set_config(R_GND, &config_port_pin);
+		port_pin_set_output_level(L_GND,false);
+	}
+	
 	config_port_pin.powersave = false;
 	config_port_pin.direction = PORT_PIN_DIR_OUTPUT;
 	port_pin_set_config(PIN_PA06E_TCC1_WO0, &config_port_pin);
@@ -182,8 +117,16 @@ void configure_port_pins(void)
 	config_port_pin.powersave = false;
 	config_port_pin.input_pull = PORT_PIN_PULL_NONE;
 	config_port_pin.direction = PORT_PIN_DIR_OUTPUT;
-	port_pin_set_config(AUX_PIN, &config_port_pin);
-	port_pin_set_output_level(AUX_PIN,true);
+	port_pin_set_config(HORN_PIN, &config_port_pin);
+	port_pin_set_output_level(HORN_PIN,true);
+
+#if  defined(HW_4v0) || defined(HW_4v1)
+	config_port_pin.powersave = false;
+	config_port_pin.input_pull = PORT_PIN_PULL_NONE;
+	config_port_pin.direction = PORT_PIN_DIR_OUTPUT;
+	port_pin_set_config(STAT_LED, &config_port_pin);
+	port_pin_set_output_level(STAT_LED,false);
+#endif
 }
 
 // Turn number to a string for BLE transmission
@@ -293,7 +236,7 @@ void i2c_read_request_callback(struct i2c_slave_module *const module)
 	packet.data        = I2C_slave_write_buffer;
 	/* Write buffer to master */
 	i2c_slave_write_packet_job(module, &packet);
-	NEW_REMOTE_DATA = 0;
+	NEW_REMOTE_DATA = false;
 
 	GET_LIMITS = 0;
 }
@@ -325,82 +268,94 @@ void configure_eeprom(void)
 		eeprom_emulator_init();
 	}
 }
+void clockInit(void);
 
+void clockInit(void)
+{
+	SYSCTRL->OSC8M.bit.PRESC = 0;                          // no prescaler (is 8 on reset)
+	SYSCTRL->OSC8M.reg |= 1 << SYSCTRL_OSC8M_ENABLE_Pos;   // enable source
 
+	GCLK->GENDIV.bit.ID = 0x01;                            // select GCLK_GEN[1]
+	GCLK->GENDIV.bit.DIV = 0;                              // no prescaler
+
+	GCLK->GENCTRL.bit.ID = 0x01;                           // select GCLK_GEN[1]
+	GCLK->GENCTRL.reg |= GCLK_GENCTRL_SRC_OSC8M;           // OSC8M source
+	GCLK->GENCTRL.bit.GENEN = 1;                           // enable generator
+
+	GCLK->CLKCTRL.reg = GCLK_CLKCTRL_ID_SERCOM4_CORE;      // SERCOM0 peripheral channel
+	GCLK->CLKCTRL.reg |= GCLK_CLKCTRL_GEN_GCLK1;           // select source GCLK_GEN[1]
+	GCLK->CLKCTRL.bit.CLKEN = 1;                           // enable generic clock
+
+	PM->APBCSEL.bit.APBCDIV = 0;                           // no prescaler
+	PM->APBCMASK.bit.SERCOM0_ = 1;                         // enable SERCOM0 interface
+}
 
 
 int main (void)
 {
 	system_init();
+	//clockInit();
 	configure_tc(); // Configure millis timer
 	
 	// Configure Devices
 	configure_ADC();
-	configure_port_pins();
-	configure_LED_PWM();
 
+	configure_eeprom();
+	restore_led_data();
+	restore_orientation_controls_remote_esc_lights();
+	
 	// Configure The button input pin and interrupt handlers for pulse width measurement
+	configure_port_pins();
 	config_eic();    // Configure the external interruption
 	config_evsys();  // Configure the event system
 	config_gpio();   // Configure the dedicated pin
-	
-	//ERROR_LEDs(2); // Uncomment for testing SAM-BA and LED output functionality
+
+	//ERROR_LEDs(0);
+#if  defined(HW_4v0) || defined(HW_4v1)
+	port_pin_set_output_level(STAT_LED, true);
+#endif
 	configure_BLE_module(); // Blocks when no BLE module is installed
 	initIMU();
-	if(!beginIMU()) ERROR_LEDs(0);
-	initKalman(0.1, 0.1, 0.5);
-	  
-	configure_eeprom();
-	restore_led_data();
-	restore_orientation_controls_remote_esc();
 	restore_cal_data(true);
+	if(!beginIMU()) ERROR_LEDs(0);
+#if  defined(HW_4v0) || defined(HW_4v1)
+	port_pin_set_output_level(STAT_LED, false);
+#endif
 
+	initKalman(0.1, 0.1, 0.5);
 	setConstBases();
 
 	if(esc_comms == COMMS_I2C){
 		configure_i2c_slave();
 		configure_i2c_slave_callbacks();
-
 	} else if(esc_comms == COMMS_UART){
-		configure_vesc_usart();
-
-		vesc_uart_expected_bytes = VESC_UART_BYTES_START;  // Start listening for start byte
-		usart_read_buffer_job(&vesc_usart, vesc_USART_read_buffer, MAX_PAYLOAD_LEN+6);
+		// Nothing to do
 	}
+
+	configure_LED_PWM();
+	if(RGB_led_type == RGB_DIGITAL_APA102 || RGB_led_type == RGB_DIGITAL_SK9822){
+		configure_APA_SPI();
+	}
+	
+	//ERROR_LEDs(1); // Uncomment for testing SAM-BA and LED output functionality
 	
 	////////////////////////////////////////////
 
 	configured_comms = esc_comms;
+	configured_RGB_led_type = RGB_led_type;
+	current_led_num = led_num;
 
-	for(int i = 0; i < ACCELsamples; ++i){
-		AXaverage[i] = 0;
-	}
+	memset(AXaverage, 0, ACCELXYsamples);
+	memset(AYaverage, 0, ACCELXYsamples);
+	memset(AZaverage, 0, ACCELZsamples);
+
+	memset(I2C_slave_read_buffer, 0, SLAVE_READ_DATA_LENGTH);
+	memset(I2C_slave_write_buffer, 0, SLAVE_WRITE_DATA_LENGTH);
 	
-	for(int i = 0; i < ACCELsamples; ++i){
-		AYaverage[i] = 0;
-	}
-	
-	for(int i = 0; i < ACCELsamples; ++i){
-		AZaverage[i] = 0;
-	}
-
-	for(int i = 0; i < SLAVE_READ_DATA_LENGTH; ++i){
-		I2C_slave_read_buffer[i] = 0;
-	}
-
-	for(int i = 0; i < SLAVE_WRITE_DATA_LENGTH; ++i){
-		I2C_slave_write_buffer[i] = 0;
-	}
+	memset(ble_write_buffer, 0, BLE_WRITE_BUF_SIZE);
 
 	// Initialize local variables used in main
-	for(int i = 0; i < 44; ++i){
-		ble_write_buffer[i] = 0;
-	}
 	VescRemoteX = VescRemoteY = 128;
-
-	float heading = 0;
-	uint32_t headingTime = 0;
-	uint32_t lheadingTime = 0;
 
 	int BLE_TX_INDEX = 0;
 	uint16_t BLE_TX_DELAY = 15;
@@ -411,40 +366,79 @@ int main (void)
 	mcconf_limits.min_erpm = -1000000;
 
 	////////////////////////////////////////////
-
+	
 	while(1)
 	{
+		// Reset the module if PA15 is pulled low
+		if(port_pin_get_input_level(BOOT_BTN)==false)
+			NVIC_SystemReset();
+
+		// Handle BLE Communication
+		read_ble_packet();
+
 		if(configured_comms != esc_comms)
 		{
 			// TODO: Deconfigure old comms and configure new comms
 			ERROR_LEDs(5);
 		}
+		
+		if(configured_RGB_led_type != RGB_led_type)
+		{
+			if(configured_RGB_led_type == RGB_ANALOG){
+				
+			}
+			// TODO: Reconfigure for new LED type
+			ERROR_LEDs(5);
+		}
 
-		// Handle BLE Communication
-		read_ble_packet();
+		if((configured_RGB_led_type == RGB_DIGITAL_APA102 || configured_RGB_led_type == RGB_DIGITAL_SK9822) && current_led_num != led_num)
+		{
+			for(uint16_t i = 0; i < MAX_LEDCOUNT; i++)
+			{
+				L_SPI_send_buf[(i*4)+4] = R_SPI_send_buf[(i*4)+4] = (0b11100000 | 0);
+				L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = 0;
+				L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = 0;
+				L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = 0;
+			}
 
-		// Communicate with the ESC
+			L_APA_write(MAX_LEDCOUNT);
+			R_APA_write(MAX_LEDCOUNT);
+			current_led_num = led_num;
+		}
+
+		
+		////////////////////////////   Communicate with ESC   /////////////////////////////
+		///////////////////////////////////////////////////////////////////////////////////
+
 		if(esc_comms == COMMS_UART){
-			read_vesc_packet();
-			if(ESC_FW_READ){
-				if(GET_LIMITS) {
-					vesc_get_mcconf();
-				} else if(SEND_CONTINUOUS){
-					READ_VESC_VALS = true;
-					vesc_read_all();
+			if(ESC_UART_CONFIGED){
+				read_vesc_packet();
+				if(ESC_FW_READ){
+					if(GET_LIMITS) {
+						vesc_get_mcconf();
+					} else if(SEND_CONTINUOUS){
+						READ_VESC_VALS = true;
+						vesc_read_all();
+					}
+				} else{
+					detect_vesc_firmware();
 				}
 			} else{
-				detect_vesc_firmware();
+				detect_esc_baud_pins();
 			}
 		}
+		
+		///////////////////////////////   Process Sensor data   //////////////////////////////
+		///////////////////////////////////////////////////////////////////////////////////
 
 		readAccel();
 		readGyro();
+#ifdef HW_3v4
 		readMag();
+#endif
 
 		// All IMU measurements are corrected to orient power to front and connectors up
 		CorrectIMUvalues(ORIENTATION[0], ORIENTATION[1]);
-
 
 		if(abs(axKalman - cax) < 10000)
 		{
@@ -452,67 +446,32 @@ int main (void)
 			axKalman = updateKalman(avgAX, ax_kalman);
 		}
 		avgAY = averageAY();
-		//avgAZ = averageAZ();
+		avgAZ = averageAZ();
+		ayKalman = updateKalman(avgAY, ay_kalman);
+		azKalman = updateKalman(avgAZ, az_kalman);
+		
+		avgGX = averageGX();
+		avgGY = averageGY();
+		avgGZ = averageGZ();
+		// TODO: Re-implement gyro kalman
+		gxKalman = avgGX;
+		gyKalman = avgGY;
+		gzKalman = avgGZ;
+		
+		update_kalman_limits();
+		calculate_heading();
 		
 		getLightSens(&light_sens);
 		light_sens = updateKalman(light_sens, light_kalman);
 		
-		ayKalman = updateKalman(avgAY, ay_kalman);
-		azKalman = updateKalman(caz, az_kalman);
-		//avgAZ = averageAZ();
-		gxKalman = calcGyro(cgx);//(uint16_t)(updateKalman(calcGyro(cgx), gx_kalman)*10);
-		gyKalman = calcGyro(cgy);//(uint16_t)(updateKalman(calcGyro(cgy), gy_kalman)*10);
-		gzKalman = calcGyro(cgz);//(updateKalman(calcGyro(cgz), gz_kalman));
-
-		if(axKalman > kalmanAX_max)
-			kalmanAX_max = axKalman;
-		else if(axKalman < kalmanAX_min)
-			kalmanAX_min = axKalman;
-
-		if(ayKalman > kalmanAY_max)
-			kalmanAY_max = ayKalman;
-		else if(ayKalman < kalmanAY_min)
-			kalmanAY_min = ayKalman;
-
-		if(azKalman > kalmanAZ_max)
-			kalmanAZ_max = azKalman;
-		else if(azKalman < kalmanAZ_min)
-			kalmanAZ_min = azKalman;
-			
-		if(gxKalman > kalmanGX_max)
-			kalmanGX_max = gxKalman;
-		else if(gxKalman < kalmanGX_min)
-			kalmanGX_min = gxKalman;
-
-		if(gyKalman > kalmanGY_max)
-			kalmanGY_max = gyKalman;
-		else if(gyKalman < kalmanGY_min)
-			kalmanGY_min = gyKalman;
-
-		if(gzKalman > kalmanAZ_max)
-			kalmanGZ_max = gzKalman;
-		else if(gzKalman < kalmanGZ_min)
-			kalmanGZ_min = gzKalman;
-
-		headingTime = millis();
-		if(abs(gzKalman) >= 0.5){
-			if(headingTime < lheadingTime){
-				heading += (gzKalman) * (((float)(headingTime + (0xFFFFFFFF - lheadingTime)))/1000);
-			}
-			else
-				heading += (gzKalman) * (((float)(headingTime - lheadingTime))/1000);
-		}
-		lheadingTime = headingTime;
-		if(heading < 0)
-			heading = 360 + heading;
-		else if(heading > 360)
-			heading = heading - 360;
-
-		
-		if(BLE_TX_TIME>millis())
-			BLE_TX_TIME = 0;
+		//////////////////////////////   Send Realtime Data   /////////////////////////////
+		///////////////////////////////////////////////////////////////////////////////////
+		check_time(&BLE_TX_TIME);
 		if(SEND_CONTINUOUS && app_remote_check == 0 && ((millis()-BLE_TX_TIME) >= BLE_TX_DELAY) && usart_get_job_status(&ble_usart, USART_TRANSCEIVER_TX) != STATUS_BUSY)
 		{
+#if  defined(HW_4v0) || defined(HW_4v1)
+			port_pin_set_output_level(STAT_LED,true);
+#endif
 			switch(BLE_TX_INDEX){
 				case 0:
 					ble_write_buffer[0] = 0x11;
@@ -603,7 +562,10 @@ int main (void)
 					ble_write_buffer[18] = 0xDE;
 					usart_write_buffer_job(&ble_usart, ble_write_buffer, 19);
 					break;
-			}
+		}
+#if  defined(HW_4v0) || defined(HW_4v1)
+			port_pin_set_output_level(STAT_LED,false);
+#endif
 			BLE_TX_INDEX++;
 			if(BLE_TX_INDEX > 3)
 				BLE_TX_INDEX = 0;
@@ -753,57 +715,90 @@ int main (void)
 			// Global LED Settings
 			ble_write_buffer[0] = 0x31;
 			ble_write_buffer[1] = led_mode_switches; // Current switch states
+			ble_write_buffer[2] = RGB_led_type;
 			// Static
-			ble_write_buffer[2] = 0x32;
-			ble_write_buffer[3] = (uint8_t)((float)Static_RGB.LR / 655.35);
-			ble_write_buffer[4] = (uint8_t)((float)Static_RGB.LG / 655.35);
-			ble_write_buffer[5] = (uint8_t)((float)Static_RGB.LB / 655.35);
-			ble_write_buffer[6] = (uint8_t)((float)Static_RGB.RR / 655.35);
-			ble_write_buffer[7] = (uint8_t)((float)Static_RGB.RG / 655.35);
-			ble_write_buffer[8] = (uint8_t)((float)Static_RGB.RB / 655.35);
+			ble_write_buffer[3] = 0x32;
+			ble_write_buffer[4] = (uint8_t)((float)Static_RGB.LR / 655.35);
+			ble_write_buffer[5] = (uint8_t)((float)Static_RGB.LG / 655.35);
+			ble_write_buffer[6] = (uint8_t)((float)Static_RGB.LB / 655.35);
+			ble_write_buffer[7] = (uint8_t)((float)Static_RGB.RR / 655.35);
+			ble_write_buffer[8] = (uint8_t)((float)Static_RGB.RG / 655.35);
+			ble_write_buffer[9] = (uint8_t)((float)Static_RGB.RB / 655.35);
 			// Color Cycle
-			ble_write_buffer[9] = 0x33;
-			ble_write_buffer[10] = (uint8_t)(RateSens[MODE_COLOR_CYCLE] * 100);
-			ble_write_buffer[11] = (uint8_t)(Brightness[MODE_COLOR_CYCLE] * 100);
+			ble_write_buffer[10] = 0x33;
+			ble_write_buffer[11] = (uint8_t)(RateSens[MODE_ANALOG_COLOR_CYCLE] * 100);
+			ble_write_buffer[12] = (uint8_t)(Brightness[MODE_ANALOG_COLOR_CYCLE] * 100);
 			// Compass Cycle
-			ble_write_buffer[12] = 0x34;
-			ble_write_buffer[13] = (uint8_t)(Brightness[MODE_COMPASS_CYCLE] * 100);
+			ble_write_buffer[13] = 0x34;
+			ble_write_buffer[14] = (uint8_t)(Brightness[MODE_ANALOG_COMPASS_CYCLE] * 100);
 			// Throttle Based
-			ble_write_buffer[14] = 0x35;
-			ble_write_buffer[15] = (uint8_t)(RateSens[MODE_THROTTLE] * 100);
-			ble_write_buffer[16] = (uint8_t)(Brightness[MODE_THROTTLE] * 100);
+			ble_write_buffer[15] = 0x35;
+			ble_write_buffer[16] = (uint8_t)(RateSens[MODE_ANALOG_THROTTLE] * 100);
+			ble_write_buffer[17] = (uint8_t)(Brightness[MODE_ANALOG_THROTTLE] * 100);
 			// RPM Based
-			ble_write_buffer[17] = 0x36;
-			ble_write_buffer[18] = (uint8_t)(RateSens[MODE_RPM_CYCLE] * 100);
-			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 19);
+			ble_write_buffer[18] = 0x36;
+			ble_write_buffer[19] = (uint8_t)(RateSens[MODE_ANALOG_RPM_CYCLE] * 100);
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 20);
 			
 			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
 			BLE_TX_TIME = millis();
 
 			// X Accel Based
 			ble_write_buffer[0] = 0x37;
-			ble_write_buffer[1] = (uint8_t)(RateSens[MODE_X_ACCEL] * 100);
+			ble_write_buffer[1] = (uint8_t)(RateSens[MODE_ANALOG_X_ACCEL] * 100);
 			// Y Accel Based
 			ble_write_buffer[2] = 0x38;
-			ble_write_buffer[3] = (uint8_t)(Brightness[MODE_Y_ACCEL] * 100);
+			ble_write_buffer[3] = (uint8_t)(Brightness[MODE_ANALOG_Y_ACCEL] * 100);
 			// Custom
-			uint8_t color_bright_base = (ColorBase[MODE_CUSTOM] << 4) | BrightBase[MODE_CUSTOM];
+			uint8_t color_bright_base = (ColorBase[MODE_ANALOG_CUSTOM] << 4) | BrightBase[MODE_ANALOG_CUSTOM];
 			ble_write_buffer[4] = 0x39;
 			ble_write_buffer[5] = color_bright_base;
-			ble_write_buffer[6] = RateBase[MODE_CUSTOM];
+			ble_write_buffer[6] = RateBase[MODE_ANALOG_CUSTOM];
 			ble_write_buffer[7] = (uint8_t)((float)Custom_RGB.LR / 655.35);
 			ble_write_buffer[8] = (uint8_t)((float)Custom_RGB.LG / 655.35);
 			ble_write_buffer[9] = (uint8_t)((float)Custom_RGB.LB / 655.35);
 			ble_write_buffer[10] = (uint8_t)((float)Custom_RGB.RR / 655.35);
 			ble_write_buffer[11] = (uint8_t)((float)Custom_RGB.RG / 655.35);
 			ble_write_buffer[12] = (uint8_t)((float)Custom_RGB.RB / 655.35);
-			ble_write_buffer[13] = (uint8_t)(RateSens[MODE_CUSTOM] * 100);
-			ble_write_buffer[14] = (uint8_t)(Brightness[MODE_CUSTOM] * 100);
+			ble_write_buffer[13] = (uint8_t)(RateSens[MODE_ANALOG_CUSTOM] * 100);
+			ble_write_buffer[14] = (uint8_t)(Brightness[MODE_ANALOG_CUSTOM] * 100);
 			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 15);
+			
+			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			BLE_TX_TIME = millis();
+
+			// Y Accel Based
+			ble_write_buffer[0] = 0x3A;
+			ble_write_buffer[1] = (uint8_t)(Digital_Static_Zoom);
+			ble_write_buffer[2] = (uint8_t)(Digital_Static_Shift);
+			ble_write_buffer[3] = (uint8_t)(Digital_Static_Brightness);
+			ble_write_buffer[4] = 0x3B;
+			ble_write_buffer[5] = (uint8_t)(Digital_Skittles_Brightness);
+			ble_write_buffer[6] = 0x3C;
+			ble_write_buffer[7] = (uint8_t)(Digital_Cycle_Zoom);
+			ble_write_buffer[8] = (uint8_t)(Digital_Cycle_Rate);
+			ble_write_buffer[9] = (uint8_t)(Digital_Cycle_Brightness);
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 10);
+			
+			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			BLE_TX_TIME = millis();
+
+			ble_write_buffer[0] = 0x3D;
+			ble_write_buffer[1] = (uint8_t)(Digital_Compass_Brightness);
+			ble_write_buffer[2] = 0x3E;
+			ble_write_buffer[3] = (uint8_t)(Digital_Throttle_Zoom);
+			ble_write_buffer[4] = (uint8_t)(Digital_Throttle_Shift);
+			ble_write_buffer[5] = (uint8_t)(Digital_Throttle_Sens);
+			ble_write_buffer[6] = (uint8_t)(Digital_Throttle_Brightness);
+			ble_write_buffer[7] = 0x3F;
+			ble_write_buffer[8] = (uint8_t)(Digital_RPM_Zoom);
+			ble_write_buffer[9] = (uint8_t)(Digital_RPM_Rate);
+			ble_write_buffer[10] = (uint8_t)(Digital_RPM_Brightness);
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 11);
 
 			SEND_LED_CHARS = 0;
 			SEND_CONTINUOUS = 1;
-		}
+	}
 		
 
 		//////////////////////////   Handle Orientation Request   /////////////////////////
@@ -814,7 +809,7 @@ int main (void)
 			BLE_TX_TIME = millis();
 
 			// Global LED Settings
-			ble_write_buffer[0] = 0x71;
+			ble_write_buffer[0] = BLE_ORIENTATION_CONFIG;//0x71;
 			ble_write_buffer[1] = ORIENTATION[0]; // Connectors Orientation
 			ble_write_buffer[2] = ORIENTATION[1]; // Power Orientation
 			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 3);
@@ -833,7 +828,7 @@ int main (void)
 			BLE_TX_TIME = millis();
 
 			// Global LED Settings
-			ble_write_buffer[0] = 0x81;
+			ble_write_buffer[0] = BLE_CONTROLS_CONFIG;//0x81;
 			ble_write_buffer[1] = (uint8_t)((AUX_ENABLED << 7) | (TURN_ENABLED << 6) | auxControlType);
 			ble_write_buffer[2] = (uint8_t)auxTimedDuration;
 			ble_write_buffer[3] = (uint8_t)((single_aux_control << 4) | single_all_control);
@@ -857,7 +852,7 @@ int main (void)
 			BLE_TX_TIME = millis();
 
 			// Global LED Settings
-			ble_write_buffer[0] = 0x72;
+			ble_write_buffer[0] = BLE_REMOTE_CONFIG;//0x72;
 			ble_write_buffer[1] = (uint8_t)((remote_type << 4) | button_type);
 			ble_write_buffer[2] = (uint8_t)(deadzone);
 			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 3);
@@ -875,7 +870,7 @@ int main (void)
 			BLE_TX_TIME = millis();
 
 			// Global LED Settings
-			ble_write_buffer[0] = 0x73;
+			ble_write_buffer[0] = BLE_ESC_CONFIG;//0x73;
 			ble_write_buffer[1] = (uint8_t)(esc_fw);
 			ble_write_buffer[2] = (uint8_t)((esc_comms << 4) | UART_baud);
 			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 3);
@@ -885,551 +880,114 @@ int main (void)
 		}
 		
 
+		//////////////////////////   Handle Lights Config Request   //////////////////////////
+		///////////////////////////////////////////////////////////////////////////////////
+		if(SEND_Lights_CONFIG)
+		{
+			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			BLE_TX_TIME = millis();
+
+			// Global LED Settings
+			ble_write_buffer[0] = BLE_LIGHTS_CONFIG;//0x75;
+			ble_write_buffer[1] = (uint8_t)(RGB_led_type << 4) | brake_light_mode;
+			ble_write_buffer[2] = (uint8_t)(deadzone);
+			ble_write_buffer[3] = (uint8_t)(led_num);
+			ble_write_buffer[4] = (uint8_t)(SYNC_RGB << 7 | BRAKE_ALWAYS_ON << 6);
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 5);
+
+			SEND_Lights_CONFIG = 0;
+			SEND_CONTINUOUS = 1;
+		}
+
+
+		//////////////////////////   Handle FW Read Request   //////////////////////////
+		///////////////////////////////////////////////////////////////////////////////////
+		if(SEND_TTL_FW)
+		{
+			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			BLE_TX_TIME = millis();
+
+			// Global LED Settings
+			ble_write_buffer[0] = BLE_TTL_FW;//0x74;
+			ble_write_buffer[1] = (uint8_t)(TTL_FW%100 & 0x00FF);
+			ble_write_buffer[2] = (uint8_t)(TTL_FW/100 & 0x00FF);
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 3);
+
+			SEND_TTL_FW = 0;
+			SEND_CONTINUOUS = 1;
+		}
+		
+
 		////////////////////////////////   LED Controls   /////////////////////////////////
 		///////////////////////////////////////////////////////////////////////////////////
 		HandleUserInput();
+
+
+		/////////////////////////////////   App Remote   //////////////////////////////////
+		///////////////////////////////////////////////////////////////////////////////////
+		HandleAppRemote();
 
 
 		//////////////////////////////////   LED MODES   //////////////////////////////////
 		///////////////////////////////////////////////////////////////////////////////////
 		if(sensorControl() && LIGHTS_ON){
 			if(SIDELIGHTS && lightControlSide()){
-
-			// Variable for controlling the brightness of the side LEDS
-			// brightness is a value from 0 to 1
-			static float output_brightness = 0;
-
-			// Variable for controlling the rate or sensitivity in applicable modes
-			// brightness is a value from 0 to 1
-			float output_rate_sens = 0;
-
-			switch(RateBase[light_mode]){ // Set the value to be used for rate or sensitivity in the side LED algorithm
-				case RATE_STATIC:
-				{
-					output_rate_sens = RateSens[light_mode];
-					break;
+				if(RGB_led_type == RGB_ANALOG){
+					AnalogSideLights();
+				}else if(RGB_led_type == RGB_DIGITAL_APA102 || RGB_led_type == RGB_DIGITAL_APA102) { // Digital LED Functions
+					DigitalSideLights();
+				} else{
+					//No RGB LEDs
 				}
-				case RATE_YAW_RATE:
-				{
-					if(gzKalman < 0)
-						output_rate_sens = gzKalman/kalmanGZ_min;
-					else
-						output_rate_sens = gzKalman/kalmanGZ_max;
-					break;
-				}
-				case RATE_ROLL_RATE:
-				{
-					if(gyKalman < 0)
-						output_rate_sens = gyKalman/kalmanGY_min;
-					else
-						output_rate_sens = gyKalman/kalmanGY_max;
-					break;
-				}
-				case RATE_RPM:
-				{
-					output_rate_sens = (((float)latest_vesc_vals.rpm)/mcconf_limits.max_erpm);
-					break;
-				}
-				case RATE_THROTTLE:
-				{
-					output_rate_sens = remote_y/255.0;
-				}
-				break;
-				case RATE_X_ACCEL:
-				{
-					if(axKalman < 0)
-						output_rate_sens = axKalman/kalmanAX_min;
-					else
-						output_rate_sens = axKalman/kalmanAX_max;
-					break;
-				}
-				case RATE_Y_ACCEL:
-				{
-					if(ayKalman < 0)
-						output_rate_sens = ayKalman/kalmanAY_min;
-					else
-						output_rate_sens = ayKalman/kalmanAY_max;
-					break;
-				}
-				case RATE_Z_ACCEL:
-				{
-					if(azKalman < 0)
-						output_rate_sens = azKalman/kalmanAZ_min;
-					else
-						output_rate_sens = azKalman/kalmanAZ_max;
-					break;
-				}
-			}
-	
-			if(output_rate_sens < 0)
-				output_rate_sens = 0;
-			else if(output_rate_sens > 1)
-				output_rate_sens = 1;
-
-			switch(BrightBase[light_mode]){ // Set the Brightness of the side LEDs
-				case BRIGHT_STATIC:
-				{
-					output_brightness = Brightness[light_mode];
-					break;
-				}
-				case BRIGHT_YAW_RATE:
-				{
-					if(gzKalman < 0)
-						output_brightness = gzKalman/kalmanGZ_min;
-					else
-						output_brightness = gzKalman/kalmanGZ_max;
-					break;
-				}
-				case BRIGHT_ROLL_RATE:
-				{
-					if(gyKalman < 0)
-						output_brightness = gyKalman/kalmanGY_min;
-					else
-						output_brightness = gyKalman/kalmanGY_max;
-					break;
-				}
-				case BRIGHT_RPM:
-				{
-					if(latest_vesc_vals.rpm != 0)
-						output_brightness = ((float)abs(latest_vesc_vals.rpm))/(float)mcconf_limits.max_erpm;
-					else
-						output_brightness = 0;
-					break;
-				}
-				case BRIGHT_THROTTLE:
-				{
-					output_brightness = remote_y/255.0;
-					break;
-				}
-				case BRIGHT_X_ACCEL:
-				{
-					if(axKalman < 0){
-						output_brightness = axKalman/kalmanAX_min;
-						SUPRESS_RIGHT_RGB = true;
-					} else{
-						output_brightness = axKalman/kalmanAX_max;
-						SUPRESS_LEFT_RGB = true;
-					}
-					break;
-				}
-				case BRIGHT_Y_ACCEL:
-				{
-					if(ayKalman < 0)
-						output_brightness = ayKalman/kalmanAY_min;
-					else
-						output_brightness = ayKalman/kalmanAY_max;
-					break;
-				}
-				case BRIGHT_Z_ACCEL:
-				{
-					if(azKalman < 0)
-						output_brightness = azKalman/kalmanAZ_min;
-					else
-						output_brightness = azKalman/kalmanAZ_max;
-						break;
-				}
-				case BRIGHT_STROBE:
-				{
-					check_time(&strobe_time);
-					if(output_brightness == 0.0 && (millis()-strobe_time > strobe_off_dur)){
-						output_brightness = 1.0;
-						strobe_time = millis();
-					}
-					else if(output_brightness == 1.0 && (millis()-strobe_time > strobe_on_dur)){
-						output_brightness = 0.0;
-						strobe_time = millis();
-					}
-					break;
-				}
-			}
-		
-			if(output_brightness < 0)
-				output_brightness = 0;
-			else if(output_brightness > 1)
-				output_brightness = 1;
-
-			switch(ColorBase[light_mode]){ // Set the color of the side LEDs
-				case COLOR_STATIC:
-				{
-					if(light_mode == MODE_STATIC)
-						RGB_Ouptut = Static_RGB;
-					else if(light_mode == MODE_CUSTOM)
-						RGB_Ouptut = Custom_RGB;
-					break;
-				}
-				case COLOR_COLOR_CYCLE:
-				{
-					upColor = cycle_index * output_brightness;
-					downColor = (0xFFFF-cycle_index) * output_brightness;
-					
-					RGB_Ouptut = setCycleColor(upColor, downColor, cycle);
-
-					cycle_index += output_rate_sens*max_cycle_rate;
-					if(cycle_index >= 0x0FFFF){
-						cycle_index = 0;
-						cycle += 1;
-						if(cycle == 3)
-						cycle = 0;
-					}
-					break;
-				}
-				case COLOR_COMPASS:
-				{
-					cycle_index = (int)(((((float)0x0FFFF) * 6) / 360) *heading) % 0x0FFFF;
-					cycle = (int)(((((float)0x0FFFF) * 6) / 360) *heading) / 0x0FFFF;
-					upColor = cycle_index * output_brightness;
-					downColor = (0xFFFF-cycle_index) * output_brightness;
-
-					if(cycle >= 3)
-					cycle -= 3;
-
-					RGB_Ouptut = setCycleColor(upColor, downColor, cycle);
-					break;
-				}
-				case COLOR_YAW_RATE:
-				{
-					if(gzKalman < 0)
-						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / kalmanGZ_min) * gzKalman) % 0x0FFFF;
-						cycle = (int)(((((float)0x0FFFF) * 3.0) / kalmanGZ_min) * gzKalman) / 0x0FFFF;
-					if(gzKalman >= 0){
-						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / kalmanGZ_max) * gzKalman) % 0x0FFFF;
-						cycle = (int)(((((float)0x0FFFF) * 3.0) / kalmanGZ_max) * gzKalman) / 0x0FFFF;
-					}
-						
-					upColor = cycle_index * output_brightness;
-					downColor = (0xFFFF-cycle_index) * output_brightness;
-
-					RGB_Ouptut = setCycleColor(upColor, downColor, cycle);
-					break;
-				}
-				case COLOR_ROLL_RATE:
-				{
-					if(gyKalman < 0)
-						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / kalmanGY_min) * gyKalman) % 0x0FFFF;
-						cycle = (int)(((((float)0x0FFFF) * 3.0) / kalmanGY_min) * gyKalman) / 0x0FFFF;
-					if(gyKalman >= 0){
-						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / kalmanGY_max) * gyKalman) % 0x0FFFF;
-						cycle = (int)(((((float)0x0FFFF) * 3.0) / kalmanGY_max) * gyKalman) / 0x0FFFF;
-					}
-				
-					upColor = cycle_index * output_brightness;
-					downColor = (0xFFFF-cycle_index) * output_brightness;
-
-					RGB_Ouptut = setCycleColor(upColor, downColor, cycle);
-					break;
-				}
-				case COLOR_PITCH_RATE:
-				{
-					if(gxKalman < 0)
-					cycle_index = (int)(((((float)0x0FFFF) * 3.0) / kalmanGX_min) * gxKalman) % 0x0FFFF;
-					cycle = (int)(((((float)0x0FFFF) * 3.0) / kalmanGX_min) * gxKalman) / 0x0FFFF;
-					if(gxKalman >= 0){
-						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / kalmanGX_max) * gxKalman) % 0x0FFFF;
-						cycle = (int)(((((float)0x0FFFF) * 3.0) / kalmanGX_max) * gxKalman) / 0x0FFFF;
-					}
-					
-					upColor = cycle_index * output_brightness;
-					downColor = (0xFFFF-cycle_index) * output_brightness;
-
-					RGB_Ouptut = setCycleColor(upColor, downColor, cycle);
-					break;
-				}
-				case COLOR_THROTTLE:
-				{
-					cycle_index = (int)(((((float)0x0FFFF) * 2.0) / 256.0) * (255-remote_y)) % 0x0FFFF;
-					cycle = (int)(((((float)0x0FFFF) * 2.0) / 256.0) * (255-remote_y)) / 0x0FFFF;
-					upColor = cycle_index * output_brightness;
-					downColor = (0xFFFF-cycle_index) * output_brightness;
-
-					cycle = cycle+2;
-					if(cycle > 2)
-						cycle = cycle - 3;
-
-					RGB_Ouptut = setCycleColor(upColor, downColor, cycle);
-
-					break;
-				}
-				case COLOR_RPM:	
-				{				
-					if(latest_vesc_vals.rpm != 0){
-						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / (float)mcconf_limits.max_erpm) * (float)abs(latest_vesc_vals.rpm)) % 0x0FFFF;
-						cycle = (int)(((((float)0x0FFFF) * 3.0) / (float)mcconf_limits.max_erpm) * (float)abs(latest_vesc_vals.rpm)) / 0x0FFFF;
-					}
-					else{
-						cycle_index = 0;
-						cycle = 0;
-					}
-					upColor = cycle_index * output_brightness;
-					downColor = (0xFFFF-cycle_index) * output_brightness;
-
-					RGB_Ouptut = setCycleColor(upColor, downColor, cycle);
-					break;
-				}
-				case COLOR_X_ACCEL:
-				{
-					if(axKalman < 0){
-						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / 3000) * (axKalman+1500)) % 0x0FFFF;
-						cycle = (int)(((((float)0x0FFFF) * 3.0) / 3000) * (axKalman+1500)) / 0x0FFFF;
-					} else {
-						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / 3000) * (axKalman+1500)) % 0x0FFFF;
-						cycle = (int)(((((float)0x0FFFF) * 3.0) / 3000) * (axKalman+1500)) / 0x0FFFF;
-					}
-
-					upColor = cycle_index * output_brightness;
-					downColor = (0xFFFF-cycle_index) * output_brightness;
-
-					RGB_Ouptut = setCycleColor(upColor, downColor, cycle);
-					break;
-				}
-				case COLOR_Y_ACCEL:
-				{
-					if(ayKalman < 0){
-						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / 3000) * (ayKalman+1500)) % 0x0FFFF;
-						cycle = (int)(((((float)0x0FFFF) * 3.0) / 3000) * (ayKalman+1500)) / 0x0FFFF;
-					} else {
-						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / 3000) * (ayKalman+1500)) % 0x0FFFF;
-						cycle = (int)(((((float)0x0FFFF) * 3.0) / 3000) * (ayKalman+1500)) / 0x0FFFF;
-					}
-
-					upColor = cycle_index * output_brightness;
-					downColor = (0xFFFF-cycle_index) * output_brightness;
-
-					RGB_Ouptut = setCycleColor(upColor, downColor, cycle);
-					break;
-				}
-				case COLOR_Z_ACCEL:
-				{
-					if(azKalman < 0){
-						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / kalmanAZ_min) * azKalman) % 0x0FFFF;
-						cycle = (int)(((((float)0x0FFFF) * 3.0) / kalmanAZ_min) * azKalman) / 0x0FFFF;
-					} else {
-						cycle_index = (int)(((((float)0x0FFFF) * 3.0) / kalmanAZ_max) * azKalman) % 0x0FFFF;
-						cycle = (int)(((((float)0x0FFFF) * 3.0) / kalmanAZ_max) * azKalman) / 0x0FFFF;
-					}
-
-					upColor = cycle_index * output_brightness;
-					downColor = (0xFFFF-cycle_index) * output_brightness;
-
-					RGB_Ouptut = setCycleColor(upColor, downColor, cycle);
-					break;
-				}
-			}
-			if(SUPRESS_LEFT_RGB){
-				RGB_Ouptut.LR = 0;
-				RGB_Ouptut.LG = 0;
-				RGB_Ouptut.LB = 0;
-				SUPRESS_LEFT_RGB = false;
-			}
-			if(SUPRESS_RIGHT_RGB){
-				RGB_Ouptut.RR = 0;
-				RGB_Ouptut.RG = 0;
-				RGB_Ouptut.RB = 0;
-				SUPRESS_RIGHT_RGB = false;
-			}
-			
-			setLeftRGB(RGB_Ouptut.LR,RGB_Ouptut.LG,RGB_Ouptut.LB);
-			setRightRGB(RGB_Ouptut.RR,RGB_Ouptut.RG,RGB_Ouptut.RB);
 			}
 			else {
 				if(!TurnSignalOn) {
-					setLeftRGB(0, 0, 0);
-					setRightRGB(0, 0, 0);
+					if(RGB_led_type == RGB_ANALOG){
+						setLeftRGB(0, 0, 0);
+						setRightRGB(0, 0, 0);
+					}
+					else{
+						if(!DIGITAL_OFF){
+							for(uint16_t i = 0; i < led_num; i++)
+							{
+								L_SPI_send_buf[(i*4)+4] = R_SPI_send_buf[(i*4)+4] = (0b11100000 | 0);
+								L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = 0;
+								L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = 0;
+								L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = 0;
+							}
+							L_APA_write(led_num);
+							R_APA_write(led_num);
+							DIGITAL_OFF = true;
+						}
+					}
 				}
 			}
 
 
 			/////////////// Control the head and tail lights //////////////////
-			if(HEADLIGHTS && lightControlHead()){
-				setWhite(0xFFFF);
-
-				float temp_y = remote_y;
-
-				if(temp_y < 120){
-					float brake_temp = (((0xFFFF-brake_offset)/120)*(120-temp_y))+brake_offset;
-					setRed(brake_temp);
-				}
-				else
-					setRed(brake_offset);
-			}
-			else{
-				setWhite(0);
-				setRed(0);
-			}
+			HeadLight();
+			
 		} else {
 			setWhite(0);
-			setRed(0);
-			setLeftRGB(0,0,0);
-			setRightRGB(0,0,0);
+			if(RGB_led_type == RGB_ANALOG){
+				setLeftRGB(0,0,0);
+				setRightRGB(0,0,0);
+			}
+			else{
+				if(!DIGITAL_OFF){
+					for(uint16_t i = 0; i < led_num; i++)
+					{
+						L_SPI_send_buf[(i*4)+4] = R_SPI_send_buf[(i*4)+4] = (0b11100000 | 0);
+						L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = 0;
+						L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = 0;
+						L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = 0;
+					}
+					L_APA_write(led_num);
+					R_APA_write(led_num);
+					DIGITAL_OFF = true;
+				}
+			}
 		}//*/
+		BrakeLight();
 	}
-}
-
-
-
-
-
-/* ///// LED REFERNCE //////
-LB = tcc1[0]
-LG = tcc0[3]
-Head = tcc1[1]
-LR = tcc2[1]
-RG = tcc0[2]
-RR = tcc2[0]
-Tail = tcc0[1]
-RB = tcc0[0]
-*/
-
-
-void getLightSens(uint16_t* light_val) {
-	adc_start_conversion(&adc1);
-	while(adc_get_status(&adc1) != ADC_STATUS_RESULT_READY);
-	adc_read(&adc1, light_val);
-	adc_clear_status(&adc1, ADC_STATUS_RESULT_READY);
-}
-
-int16_t averageAX(){
-	AXtotal -= AXaverage[ACCELsamples-1];
-	for(int i = ACCELsamples-1; i > 0; --i){
-		AXaverage[i] = AXaverage[i-1];
-	}
-	AXtotal += cax;
-	AXaverage[0] = cax;
-
-	return (int16_t)(AXtotal/ACCELsamples);
-}
-
-int16_t averageAY(){
-	AYtotal -= AYaverage[ACCELsamples-1];
-	for(int i = ACCELsamples-1; i > 0; --i){
-		AYaverage[i] = AYaverage[i-1];
-	}
-	AYtotal += cay;
-	AYaverage[0] = cay;
-
-	return (int16_t)(AYtotal/ACCELsamples);
-}
-
-int16_t averageAZ(){
-		AZtotal -= AZaverage[ACCELsamples-1];
-		for(int i = ACCELsamples-1; i > 0; --i){
-			AZaverage[i] = AZaverage[i-1];
-		}
-		AZtotal += azKalman;
-		AZaverage[0] = azKalman;
-
-		return (int16_t)(AZtotal/ACCELsamples);
-}
-
-char sensorControl() {
-static uint8_t off_type = 0;
-static long count = 0;
-static bool result = 1;
-	if(IMU_CONTROLED){
-		if(result){
-			if(ayKalman >= 1000 && result){
-				count++;
-				off_type = 1;
-			}
-			else if(ayKalman <= -1000 && result){
-				count++;
-				off_type = 2;
-			}
-			else if(axKalman >= 1250 && result){
-				count++;
-				off_type = 3;
-			}
-			else if(axKalman <= -1250 && result){
-				count++;
-				off_type = 4;
-			}
-			else
-				count = 0;
-		}
-		else if(!result){
-			if((ayKalman < 750 && off_type == 1) || (ayKalman > -750 && off_type == 2) || (axKalman < 1000 && off_type == 3) || (axKalman > -1000 && off_type == 4)){
-				count++;
-			}
-			else
-				count = 0;
-		}
-		
-		if(count > 6)
-			result = !result;
-
-		if(result)
-			off_type = 0;
-
-		return result;
-	}
-	else
-		return 1;
-}
-
-
-
-char lightControlSide() {
-	// TO BE IMPLEMENTED
-
-	return true;
-}
-
-char lightControlHead() {
-	// TO BE IMPLEMENTED
-
-	return true;
-}
-
-void initKalman(float meas, float est, float _q)
-{
-	for(int i = 0; i < KalmanArraySize; i++){
-		err_measure[i] = meas;
-		err_estimate[i] = est;
-		q[i] = _q;
-		current_estimate[i] = 0;
-		last_estimate[i] = 0;
-		kalman_gain[i] = 0;
-	}
-
-	err_measure[ax_kalman] = 15;
-	err_estimate[ax_kalman] = 15;
-	q[ax_kalman] = 0.3;
-
-	err_measure[ay_kalman] = 15;
-	err_estimate[ay_kalman] = 15;
-	q[ay_kalman] = 0.3;
-
-// 	err_measure[ay_kalman] = 20;
-// 	err_estimate[ay_kalman] = 20;
-// 	q[ay_kalman] = 0.8;
-
-	err_measure[az_kalman] = 30;
-	err_estimate[az_kalman] = 30;
-	q[az_kalman] = 0.3;
-
-// 	err_measure[gx_kalman] = 3;
-// 	err_estimate[gx_kalman] = 3;
-// 	q[gx_kalman] = 0.9;
-// 
-// 	err_measure[gy_kalman] = 3;
-// 	err_estimate[gy_kalman] = 3;
-// 	q[gy_kalman] = 0.9;
-// 	
-// 	err_measure[gz_kalman] = 0.1;
-// 	err_estimate[gz_kalman] = 1;
-// 	q[gz_kalman] = 0.99;
-
-	err_measure[light_kalman] = 200;
-	err_estimate[light_kalman] = 200;
-	q[light_kalman] = 0.008;
-}
-
-float updateKalman(float meas, int kalmanIndex)
-{
-	  kalman_gain[kalmanIndex] = err_estimate[kalmanIndex]/(err_estimate[kalmanIndex] + err_measure[kalmanIndex]);
-	  kalman_gain[kalmanIndex] = max(kalman_gain[kalmanIndex],0.015);
-	  current_estimate[kalmanIndex] = last_estimate[kalmanIndex] + kalman_gain[kalmanIndex] * (meas - last_estimate[kalmanIndex]);
-	  err_estimate[kalmanIndex] =  (1.0 - kalman_gain[kalmanIndex])*err_estimate[kalmanIndex] + abs(last_estimate[kalmanIndex]-current_estimate[kalmanIndex])*q[kalmanIndex];
-	  last_estimate[kalmanIndex]=current_estimate[kalmanIndex];
-
-	  return current_estimate[kalmanIndex];
 }

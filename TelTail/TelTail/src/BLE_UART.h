@@ -16,17 +16,20 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-
+#ifndef BLE_UART_H
+#define BLE_UART_H
 #include "VESC_UART.h"
+#include "EEPROM_Functions.h"
 
 
 // usart globals
-#define MAX_BLE_PAYLOAD_SIZE 15
+#define MAX_BLE_PAYLOAD_SIZE 255
 #define MAX_BLE_MESSAGE_SIZE MAX_BLE_PAYLOAD_SIZE+4
 #define BLE_START_BYTE 0xA5
 #define BLE_STOP_BYTE 0x5A
+#define BLE_WRITE_BUF_SIZE 44
 uint8_t ble_USART_read_buffer[MAX_BLE_MESSAGE_SIZE];
-uint8_t ble_write_buffer[44];
+uint8_t ble_write_buffer[BLE_WRITE_BUF_SIZE];
 char SEND_LED_CHARS = 0;
 
 struct usart_module ble_usart;
@@ -36,16 +39,16 @@ struct usart_module ble_usart;
 #define BLE_BAUD 115200
 bool BLE_CONFIGURED = false; // Set monitor var to check if BLE is configured yet or not
 uint8_t RECIEVE_REMOTE = 0;
-uint8_t NEW_REMOTE_DATA = 0;
 uint8_t SEND_CONTINUOUS = 1;
 uint8_t FIRST_MESSAGE = 1;
 uint8_t SEND_SENSORS = 0;
 uint8_t CAL_IMU = 0;
-uint8_t AppRemoteY = 128;
 bool SEND_ORIENTAION_CONFIG = 0;
 bool SEND_CONTROLS_CONFIG = 0;
 bool SEND_REMOTE_CONFIG = 0;
 bool SEND_ESC_CONFIG = 0;
+bool SEND_Lights_CONFIG = 0;
+bool SEND_TTL_FW = 0;
 bool OK_EXPECTED = 0;
 
 int BLE_delay = 1000;
@@ -70,11 +73,22 @@ uint8_t BLE_MSG[MAX_BLE_MESSAGE_SIZE];
 #define Calibrate_Accel			0x00
 #define Calibrate_Light			0x00
 #define Read_Controls			0xFC
+#define Read_Lights_Config		0xA1
 #define Aux_Pressed				0xAA
 #define Aux_Released			0xAB
 #define Read_Remote_Config		0xFB
 #define Read_ESC_Config			0xFA
+#define Read_TTL_FW				0xF9
 #define Custom_Values			0xB1
+#define Digital_Static_Values	0xB9
+#define Digital_Skittles_Values	0xBA
+#define Digital_Cycle_Values	0xBB
+#define Digital_Compass_Values	0xBC
+#define Digital_Throttle_Values	0xC0
+#define Digital_RPM_Values		0xBE
+#define Digital_RPM_Throttle_Values 0xBF
+#define Digital_Compass_Wheel_Values 0xC1
+#define Digital_Compass_Snake_Values 0xC6
 #define Y_Accel_Values			0xE6
 #define X_Accel_Values			0xE7
 #define RPM_Throttle			0xE8
@@ -87,7 +101,16 @@ uint8_t BLE_MSG[MAX_BLE_MESSAGE_SIZE];
 #define Apply_Control_Settings	0xC2
 #define Apply_Remote_Config		0xC3
 #define Apply_ESC_Config		0xC4
+#define Apply_Lights_Config		0xC5
 #define End_of_Message			0xAE
+
+
+#define BLE_LIGHTS_CONFIG		0x75
+#define BLE_ESC_CONFIG			0x73
+#define BLE_REMOTE_CONFIG		0x72
+#define BLE_TTL_FW				0x74
+#define	BLE_ORIENTATION_CONFIG	0x71
+#define BLE_CONTROLS_CONFIG		0x81
 
 
 bool check_ble_AT_recieved(void);
@@ -201,7 +224,6 @@ void process_ble_packet(){
 			SEND_CONTINUOUS = 0;
 			break;
 		case Calibrate_All:
-			_autoCalc = false; // Workaround so that calibrate doesnt include the current offset
 			calibrate(true);
 			save_cal_data();
 			break;
@@ -242,6 +264,14 @@ void process_ble_packet(){
 			SEND_ESC_CONFIG = 1;
 			SEND_CONTINUOUS = 0;
 			break;
+		case Read_Lights_Config:
+			SEND_Lights_CONFIG = 1;
+			SEND_CONTINUOUS = 0;
+			break;
+		case Read_TTL_FW:
+			SEND_TTL_FW = 1;
+			SEND_CONTINUOUS = 0;
+			break;
 		case Aux_Pressed:
 			AppAuxButton = 1;
 			break;
@@ -250,12 +280,13 @@ void process_ble_packet(){
 			break;
 		case Remote_Data:
 			AppRemoteY = (ble_recieve_packet.payload[0] & 0x0FF);
-			NEW_REMOTE_DATA = 1;
+			NEW_REMOTE_DATA = true;
 			break;
 		case RPM_Throttle:
 			LIGHTS_ON = 1;
-			light_mode = MODE_RPM_THROTTLE;
-			SWITCHES = ble_recieve_packet.payload[0];
+			light_mode = MODE_ANALOG_RPM_THROTTLE;
+			SWITCHES = (ble_recieve_packet.payload[0] & 0xF0);
+			RGB_led_type = (ble_recieve_packet.payload[0] & 0x0F);
 			SIDELIGHTS = (SWITCHES & 0x10) >> 4;
 			HEADLIGHTS = (SWITCHES & 0x20) >> 5;
 			LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
@@ -264,94 +295,110 @@ void process_ble_packet(){
 			break;
 		case Compass_Cycle_Values:
 			LIGHTS_ON = 1;
-			light_mode = MODE_COMPASS_CYCLE;
-			SWITCHES = ble_recieve_packet.payload[0];
+			light_mode = MODE_ANALOG_COMPASS_CYCLE;
+			SWITCHES = (ble_recieve_packet.payload[0] & 0xF0);
+			RGB_led_type = (ble_recieve_packet.payload[0] & 0x0F);
 			SIDELIGHTS = (SWITCHES & 0x10) >> 4;
 			HEADLIGHTS = (SWITCHES & 0x20) >> 5;
 			LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
 			IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-			Brightness[MODE_COMPASS_CYCLE] = ((float)(ble_recieve_packet.payload[1]))/100;
+			Brightness[MODE_ANALOG_COMPASS_CYCLE] = ((float)(ble_recieve_packet.payload[1]))/100;
 			save_led_data();
 			break;
 		case RPM_Values:
 			LIGHTS_ON = 1;
-			light_mode = MODE_RPM_CYCLE;
-			SWITCHES = ble_recieve_packet.payload[0];
+			light_mode = MODE_ANALOG_RPM_CYCLE;
+			SWITCHES = (ble_recieve_packet.payload[0] & 0xF0);
+			RGB_led_type = (ble_recieve_packet.payload[0] & 0x0F);
 			SIDELIGHTS = (SWITCHES & 0x10) >> 4;
 			HEADLIGHTS = (SWITCHES & 0x20) >> 5;
 			LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
 			IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-			RateSens[MODE_RPM_CYCLE] = ((float)(ble_recieve_packet.payload[1]))/100;
+			RateSens[MODE_ANALOG_RPM_CYCLE] = ((float)(ble_recieve_packet.payload[1]))/100;
 			save_led_data();
 			break;
 		case X_Accel_Values:
 			LIGHTS_ON = 1;
-			light_mode = MODE_X_ACCEL;
-			SWITCHES = ble_recieve_packet.payload[0];
+			light_mode = MODE_ANALOG_X_ACCEL;
+			SWITCHES = (ble_recieve_packet.payload[0] & 0xF0);
+			RGB_led_type = (ble_recieve_packet.payload[0] & 0x0F);
 			SIDELIGHTS = (SWITCHES & 0x10) >> 4;
 			HEADLIGHTS = (SWITCHES & 0x20) >> 5;
 			LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
 			IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-			RateSens[MODE_X_ACCEL] = ((float)(ble_recieve_packet.payload[1]))/100;
+			RateSens[MODE_ANALOG_X_ACCEL] = ((float)(ble_recieve_packet.payload[1]))/100;
 			save_led_data();
 			break;
 		case Y_Accel_Values:
 			LIGHTS_ON = 1;
-			light_mode = MODE_Y_ACCEL;
-			SWITCHES = ble_recieve_packet.payload[0];
+			light_mode = MODE_ANALOG_Y_ACCEL;
+			SWITCHES = (ble_recieve_packet.payload[0] & 0xF0);
+			RGB_led_type = (ble_recieve_packet.payload[0] & 0x0F);
 			SIDELIGHTS = (SWITCHES & 0x10) >> 4;
 			HEADLIGHTS = (SWITCHES & 0x20) >> 5;
 			LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
 			IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-			Brightness[MODE_Y_ACCEL] = ((float)(ble_recieve_packet.payload[1]))/100;
+			Brightness[MODE_ANALOG_Y_ACCEL] = ((float)(ble_recieve_packet.payload[1]))/100;
 			save_led_data();
 			break;
 		case Apply_Orientation:
 			ORIENTATION[0] = ble_recieve_packet.payload[0];
 			ORIENTATION[1] = ble_recieve_packet.payload[1];
-			save_orientation_controls_remote_esc();
+			save_orientation_controls_remote_esc_lights();
 			break;
 		case Apply_Remote_Config:
 			remote_type = (ble_recieve_packet.payload[0]&0x0F0)>>4;
 			button_type = (ble_recieve_packet.payload[0]&0x0F);
 			deadzone = ble_recieve_packet.payload[1];
-			save_orientation_controls_remote_esc();
+			save_orientation_controls_remote_esc_lights();
 			break;
 		case Apply_ESC_Config:
 			esc_fw = ble_recieve_packet.payload[0];
 			esc_comms = (ble_recieve_packet.payload[1]&0x0F0)>>4;
 			UART_baud = (ble_recieve_packet.payload[1]&0x0F);
-			save_orientation_controls_remote_esc();
+			save_orientation_controls_remote_esc_lights();
 			configured_comms = esc_comms;
+			break;
+		case Apply_Lights_Config:
+			RGB_led_type = (ble_recieve_packet.payload[0]&0x0F0)>>4;
+			brake_light_mode = (ble_recieve_packet.payload[0]&0x0F);
+			deadzone = (ble_recieve_packet.payload[1]);
+			led_num = (ble_recieve_packet.payload[2]);
+			SYNC_RGB = (ble_recieve_packet.payload[3]&0x80)==0x80;
+			BRAKE_ALWAYS_ON = (ble_recieve_packet.payload[3]&0x40)==0x40;
+			save_orientation_controls_remote_esc_lights();
 			break;
 		case Color_Cycle_Values:
 			LIGHTS_ON = 1;
-			light_mode = MODE_COLOR_CYCLE;
-			SWITCHES = ble_recieve_packet.payload[0];
+			light_mode = MODE_ANALOG_COLOR_CYCLE;
+			SWITCHES = (ble_recieve_packet.payload[0] & 0xF0);
+			RGB_led_type = (ble_recieve_packet.payload[0] & 0x0F);
 			SIDELIGHTS = (SWITCHES & 0x10) >> 4;
 			HEADLIGHTS = (SWITCHES & 0x20) >> 5;
 			LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
 			IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-			RateSens[MODE_COLOR_CYCLE] = ((float)(ble_recieve_packet.payload[1]))/100;
-			Brightness[MODE_COLOR_CYCLE] = ((float)(ble_recieve_packet.payload[2]))/100;
+			RateSens[MODE_ANALOG_COLOR_CYCLE] = ((float)(ble_recieve_packet.payload[1]))/100;
+			Brightness[MODE_ANALOG_COLOR_CYCLE] = ((float)(ble_recieve_packet.payload[2]))/100;
 			save_led_data();
 			break;
 		case Throttle_Values:
 			LIGHTS_ON = 1;
-			light_mode = MODE_THROTTLE;
-			SWITCHES = ble_recieve_packet.payload[0];
+			light_mode = MODE_ANALOG_THROTTLE;
+			SWITCHES = (ble_recieve_packet.payload[0] & 0xF0);
+			RGB_led_type = (ble_recieve_packet.payload[0] & 0x0F);
 			SIDELIGHTS = (SWITCHES & 0x10) >> 4;
 			HEADLIGHTS = (SWITCHES & 0x20) >> 5;
 			LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
 			IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-			RateSens[MODE_THROTTLE] = ((float)(ble_recieve_packet.payload[1]))/100;
-			Brightness[MODE_THROTTLE] = ((float)(ble_recieve_packet.payload[2]))/100;
+			RateSens[MODE_ANALOG_THROTTLE] = ((float)(ble_recieve_packet.payload[1]))/100;
+			Brightness[MODE_ANALOG_THROTTLE] = ((float)(ble_recieve_packet.payload[2]))/100;
 			save_led_data();
 			break;
 		case Static_Values:
 			LIGHTS_ON = 1;
-			light_mode = MODE_STATIC;
-			SWITCHES = ble_recieve_packet.payload[0];
+			light_mode = MODE_ANALOG_STATIC;
+			SWITCHES = (ble_recieve_packet.payload[0] & 0xF0);
+			RGB_led_type = (ble_recieve_packet.payload[0] & 0x0F);
 			SIDELIGHTS = (SWITCHES & 0x10) >> 4;
 			HEADLIGHTS = (SWITCHES & 0x20) >> 5;
 			LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
@@ -381,27 +428,133 @@ void process_ble_packet(){
 			dual_side_control = (ble_recieve_packet.payload[6]&0x0F);
 			dual_down_control = (ble_recieve_packet.payload[7]&0xF0)>>4;
 			dual_up_control = (ble_recieve_packet.payload[7]&0x0F);
-			save_orientation_controls_remote_esc();
+			save_orientation_controls_remote_esc_lights();
 			break;
 		case Custom_Values:
 			LIGHTS_ON = 1;
-			light_mode = MODE_CUSTOM;
-			SWITCHES = ble_recieve_packet.payload[0];
+			light_mode = MODE_ANALOG_CUSTOM;
+			SWITCHES = (ble_recieve_packet.payload[0] & 0xF0);
+			RGB_led_type = (ble_recieve_packet.payload[0] & 0x0F);
 			SIDELIGHTS = (SWITCHES & 0x10) >> 4;
 			HEADLIGHTS = (SWITCHES & 0x20) >> 5;
 			LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
 			IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-			ColorBase[MODE_CUSTOM] = (SWITCHES & 0x0F);
-			RateBase[MODE_CUSTOM] = (ble_recieve_packet.payload[1] & 0xF0) >> 4;
-			BrightBase[MODE_CUSTOM] = (ble_recieve_packet.payload[1] & 0x0F);
-			Custom_RGB.LR = (uint16_t)((float)ble_recieve_packet.payload[2] * 257);
-			Custom_RGB.LG = (uint16_t)((float)ble_recieve_packet.payload[3] * 257);
-			Custom_RGB.LB = (uint16_t)((float)ble_recieve_packet.payload[4] * 257);
-			Custom_RGB.RR = (uint16_t)((float)ble_recieve_packet.payload[5] * 257);
-			Custom_RGB.RG = (uint16_t)((float)ble_recieve_packet.payload[6] * 257);
-			Custom_RGB.RB = (uint16_t)((float)ble_recieve_packet.payload[7] * 257);
-			RateSens[MODE_CUSTOM] = ((float)(ble_recieve_packet.payload[8]))/100;
-			Brightness[MODE_CUSTOM] = ((float)(ble_recieve_packet.payload[9]))/100;
+			ColorBase[MODE_ANALOG_CUSTOM] = (ble_recieve_packet.payload[1] & 0x0FF);
+			RateBase[MODE_ANALOG_CUSTOM] = (ble_recieve_packet.payload[2] & 0xF0) >> 4;
+			BrightBase[MODE_ANALOG_CUSTOM] = (ble_recieve_packet.payload[2] & 0x0F);
+			Custom_RGB.LR = (uint16_t)((float)ble_recieve_packet.payload[3] * 257);
+			Custom_RGB.LG = (uint16_t)((float)ble_recieve_packet.payload[4] * 257);
+			Custom_RGB.LB = (uint16_t)((float)ble_recieve_packet.payload[5] * 257);
+			Custom_RGB.RR = (uint16_t)((float)ble_recieve_packet.payload[6] * 257);
+			Custom_RGB.RG = (uint16_t)((float)ble_recieve_packet.payload[7] * 257);
+			Custom_RGB.RB = (uint16_t)((float)ble_recieve_packet.payload[8] * 257);
+			RateSens[MODE_ANALOG_CUSTOM] = ((float)(ble_recieve_packet.payload[9]))/100;
+			Brightness[MODE_ANALOG_CUSTOM] = ((float)(ble_recieve_packet.payload[10]))/100;
+			save_led_data();
+			break;
+		case Digital_Static_Values:
+			LIGHTS_ON = 1;
+			light_mode = MODE_DIGITAL_STATIC;
+			SWITCHES = (ble_recieve_packet.payload[0] & 0xF0);
+			SIDELIGHTS = (SWITCHES & 0x10) >> 4;
+			HEADLIGHTS = (SWITCHES & 0x20) >> 5;
+			LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
+			IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
+			Digital_Static_Zoom = ble_recieve_packet.payload[1];
+			Digital_Static_Shift = ble_recieve_packet.payload[2];
+			Digital_Static_Brightness = ble_recieve_packet.payload[3];
+			save_led_data();
+			break;
+		case Digital_Skittles_Values:
+			LIGHTS_ON = 1;
+			light_mode = MODE_DIGITAL_SKITTLES;
+			SWITCHES = (ble_recieve_packet.payload[0] & 0xF0);
+			SIDELIGHTS = (SWITCHES & 0x10) >> 4;
+			HEADLIGHTS = (SWITCHES & 0x20) >> 5;
+			LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
+			IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
+			Digital_Skittles_Brightness = ble_recieve_packet.payload[1];
+			save_led_data();
+			break;
+		case Digital_Cycle_Values:
+			LIGHTS_ON = 1;
+			light_mode = MODE_DIGITAL_GRADIENT_CYCLE;
+			SWITCHES = (ble_recieve_packet.payload[0] & 0xF0);
+			SIDELIGHTS = (SWITCHES & 0x10) >> 4;
+			HEADLIGHTS = (SWITCHES & 0x20) >> 5;
+			LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
+			IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
+			Digital_Cycle_Zoom = ble_recieve_packet.payload[1];
+			Digital_Cycle_Rate = ble_recieve_packet.payload[2];
+			Digital_Cycle_Brightness = ble_recieve_packet.payload[3];
+			save_led_data();
+			break;
+		case Digital_Compass_Values:
+			LIGHTS_ON = 1;
+			light_mode = MODE_DIGITAL_COMPASS_CYCLE;
+			SWITCHES = (ble_recieve_packet.payload[0] & 0xF0);
+			SIDELIGHTS = (SWITCHES & 0x10) >> 4;
+			HEADLIGHTS = (SWITCHES & 0x20) >> 5;
+			LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
+			IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
+			Digital_Compass_Brightness = ble_recieve_packet.payload[1];
+			save_led_data();
+			break;
+		case Digital_Throttle_Values:
+			LIGHTS_ON = 1;
+			light_mode = MODE_DIGITAL_THROTTLE;
+			SWITCHES = (ble_recieve_packet.payload[0] & 0xF0);
+			SIDELIGHTS = (SWITCHES & 0x10) >> 4;
+			HEADLIGHTS = (SWITCHES & 0x20) >> 5;
+			LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
+			IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
+			Digital_Throttle_Zoom = ble_recieve_packet.payload[1];
+			Digital_Throttle_Shift = ble_recieve_packet.payload[2];
+			Digital_Throttle_Sens = ble_recieve_packet.payload[3];
+			Digital_Throttle_Brightness = ble_recieve_packet.payload[4];
+			save_led_data();
+			break;
+		case Digital_RPM_Values:
+			LIGHTS_ON = 1;
+			light_mode = MODE_DIGITAL_RPM_CYCLE;
+			SWITCHES = (ble_recieve_packet.payload[0] & 0xF0);
+			SIDELIGHTS = (SWITCHES & 0x10) >> 4;
+			HEADLIGHTS = (SWITCHES & 0x20) >> 5;
+			LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
+			IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
+			Digital_RPM_Zoom = ble_recieve_packet.payload[1];
+			Digital_RPM_Rate = ble_recieve_packet.payload[2];
+			Digital_RPM_Brightness = ble_recieve_packet.payload[3];
+			save_led_data();
+			break;
+		case Digital_RPM_Throttle_Values:
+			LIGHTS_ON = 1;
+			light_mode = MODE_DIGITAL_RPM_THROTTLE;
+			SWITCHES = (ble_recieve_packet.payload[0] & 0xF0);
+			SIDELIGHTS = (SWITCHES & 0x10) >> 4;
+			HEADLIGHTS = (SWITCHES & 0x20) >> 5;
+			LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
+			IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
+			save_led_data();
+			break;
+		case Digital_Compass_Wheel_Values:
+			LIGHTS_ON = 1;
+			light_mode = MODE_DIGITAL_COMPASS_WHEEL;
+			SWITCHES = (ble_recieve_packet.payload[0] & 0xF0);
+			SIDELIGHTS = (SWITCHES & 0x10) >> 4;
+			HEADLIGHTS = (SWITCHES & 0x20) >> 5;
+			LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
+			IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
+			save_led_data();
+			break;
+		case Digital_Compass_Snake_Values:
+			LIGHTS_ON = 1;
+			light_mode = MODE_DIGITAL_COMPASS_SNAKE;
+			SWITCHES = (ble_recieve_packet.payload[0] & 0xF0);
+			SIDELIGHTS = (SWITCHES & 0x10) >> 4;
+			HEADLIGHTS = (SWITCHES & 0x20) >> 5;
+			LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
+			IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
 			save_led_data();
 			break;
 	}
@@ -412,6 +565,7 @@ void read_ble_packet(){
 		ble_recieve_packet.size = ble_USART_read_buffer[1];
 		ble_recieve_packet.ID = ble_USART_read_buffer[2];
 		memcpy(ble_recieve_packet.payload, ble_USART_read_buffer+3, ble_recieve_packet.size);
+
 		process_ble_packet();
 			
 		memset(ble_USART_read_buffer, 0, MAX_BLE_MESSAGE_SIZE);
@@ -430,5 +584,14 @@ void read_ble_packet(){
 		usart_abort_job(&ble_usart, USART_TRANSCEIVER_RX);
 		// Start listening to the BLE UART
 		usart_read_buffer_job(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE);
+	} else if(CHECK_FOR_NOISE(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE)){
+		//Stop listening to the BLE UART
+		usart_abort_job(&ble_usart, USART_TRANSCEIVER_RX);
+		memset(ble_USART_read_buffer, 0, MAX_BLE_MESSAGE_SIZE);
+		uint32_t temp_timer = millis();
+		while(millis() - temp_timer < 10){}
+		// Start listening to the BLE UART
+		usart_read_buffer_job(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE);
 	}
 }
+#endif /* BLE_UART_H_ */

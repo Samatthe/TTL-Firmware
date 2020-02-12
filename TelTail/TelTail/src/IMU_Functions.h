@@ -17,14 +17,21 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef IMU_H
-#define IMU_H
+#ifndef IMU_FUNCTIONS_H
+#define IMU_FUNCTIONS_H
 
+#include <asf.h>
 #include "LSM9DS1_Registers.h"
 #include "LSM9DS1_Types.h"
+#include "LED_Functions.h"
 
-#define LSM9DS1_AG_ADDR 0x6B
-#define LSM9DS1_M_ADDR 0x1E
+#ifdef HW_3v4
+#define LSMXD_AG_ADDR 0x6B
+#endif
+#if  defined(HW_4v0) || defined(HW_4v1)
+#define LSMXD_AG_ADDR 0x6A
+#endif
+#define LSM9D_M_ADDR 0x1E
 
 // i2c master globals
 #define DATA_LENGTH 10
@@ -322,7 +329,7 @@ void enableFIFO(bool enable);
 //	  Possible inputs: FIFO_OFF, FIFO_THS, FIFO_CONT_TRIGGER, FIFO_OFF_TRIGGER, FIFO_CONT
 //	- fifoThs: FIFO threshold level setting
 //	  Any value from 0-0x1F is acceptable.
-void setFIFO(enum fifoMode_type fifoMode, uint8_t fifoThs);
+void setFIFO(enum fifoMode_type fifoMode, uint16_t fifoThs);
 	
 // getFIFOSamples() - Get number of FIFO samples
 uint8_t getFIFOSamples(void);
@@ -485,7 +492,16 @@ uint8_t readBytes(uint8_t address, uint8_t subAddress, uint8_t * dest, uint8_t c
 
 // Correct the axis values depending on the configured module orientation
 void CorrectIMUvalues(uint8_t connector_orient, uint8_t power_orient);
-
+void calculate_heading(void);
+void initKalman(float meas, float est, float _q);
+float updateKalman(float meas, int kalmanIndex);
+void update_kalman_limits(void);
+int16_t averageAZ(void);
+int16_t averageAY(void);
+int16_t averageAX(void);
+float averageGZ(void);
+float averageGY(void);
+float averageGX(void);
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -496,13 +512,29 @@ float magSensitivity[4] = {0.00014, 0.00029, 0.00043, 0.00058};
 
 void initIMU()
 {
-	settings.device.agAddress = LSM9DS1_AG_ADDR;
-	settings.device.mAddress = LSM9DS1_M_ADDR;
+	settings.device.agAddress = LSMXD_AG_ADDR;
+	settings.device.mAddress = LSM9D_M_ADDR;
 
 	settings.gyro.enabled = true;
 	settings.gyro.enableX = true;
 	settings.gyro.enableY = true;
 	settings.gyro.enableZ = true;
+	settings.gyro.lowPowerEnable = false;
+	settings.gyro.HPFEnable = false;
+	settings.gyro.flipX = false;
+	settings.gyro.flipY = false; // LSM6D inverted from LSM9D, corrected in init func
+	settings.gyro.flipZ = false;
+	settings.gyro.latchInterrupt = true;
+	
+	settings.accel.enabled = true;
+	settings.accel.enableX = true;
+	settings.accel.enableY = true;
+	settings.accel.enableZ = true;
+	settings.accel.highResEnable = false;
+
+	settings.temp.enabled = true;
+
+#ifdef HW_3v4
 	// gyro scale can be 245, 500, or 2000
 	settings.gyro.scale = 245;//245
 	// gyro sample rate: value between 1-6
@@ -514,22 +546,12 @@ void initIMU()
 	// Actual value of cutoff frequency depends
 	// on sample rate.
 	settings.gyro.bandwidth = 0;
-	settings.gyro.lowPowerEnable = false;
-	settings.gyro.HPFEnable = false;
 	// Gyro HPF cutoff frequency: value between 0-9
 	// Actual value depends on sample rate. Only applies
 	// if gyroHPFEnable is true.
 	settings.gyro.HPFCutoff = 0;
-	settings.gyro.flipX = false;
-	settings.gyro.flipY = false;
-	settings.gyro.flipZ = false;
 	settings.gyro.orientation = 0;
-	settings.gyro.latchInterrupt = true;
 
-	settings.accel.enabled = true;
-	settings.accel.enableX = true;
-	settings.accel.enableY = true;
-	settings.accel.enableZ = true;
 	// accel scale can be 2, 4, 8, or 16
 	settings.accel.scale = 16;//8
 	// accel sample rate can be 1-6
@@ -542,7 +564,6 @@ void initIMU()
 	// 0 = 408 Hz   2 = 105 Hz
 	// 1 = 211 Hz   3 = 50 Hz
 	settings.accel.bandwidth = -1;
-	settings.accel.highResEnable = false;
 	// accelHighResBandwidth can be any value between 0-3
 	// LP cutoff is set to a factor of sample rate
 	// 0 = ODR/50    2 = ODR/9
@@ -570,8 +591,41 @@ void initIMU()
 	// 1 = single-conversion
 	// 2 = power down
 	settings.mag.operatingMode = 0;
+#endif
+#if  defined(HW_4v0) || defined(HW_4v1)
+	// gyro scale can be 250, 500, 1000, or 2000
+	settings.gyro.scale = 250;//245
+	// gyro sample rate: value between 1-8
+	// 1 = 12.5		4 = 104		7 = 833
+	// 2 = 26		5 = 208		8 = 1660
+	// 3 = 52		6 = 416
+	settings.gyro.sampleRate = 8;
+	// Gyro HPF cutoff frequency: value between 0-3
+	// 0 = 0.0081	2 = 2.07
+	// 1 = 0.0324	3 = 16.32
+	// Only applies if gyroHPFEnable is true.
+	settings.gyro.HPFCutoff = 0;
+	settings.gyro.orientation = 0;
 
-	settings.temp.enabled = true;
+	// accel scale can be 2, 4, 8, or 16
+	settings.accel.scale = 16;//8
+	// accel sample rate can be 1-10
+	// 1 = 12.5 Hz		4 = 104 Hz	7 = 833Hz	10 = 6.66kHz
+	// 2 = 26 Hz		5 = 208 Hz	8 = 1.66kHz	
+	// 3 = 152 Hz		6 = 412 Hz	9 = 3.33kHz	
+	settings.accel.sampleRate = 8;
+	// Accel cutoff freqeuncy can be any value between 0 - 3.
+	// -1 = bandwidth determined by sample rate
+	// 0 = 400 Hz   2 = 100 Hz
+	// 1 = 200 Hz   3 = 50 Hz
+	settings.accel.bandwidth = 0;
+	// accelHighResBandwidth can be any value between 0-3
+	// LP cutoff is set to a factor of sample rate
+	// 0 = ODR/4    2 = ODR/9
+	// 1 = ODR/100   3 = ODR/400
+	settings.accel.highResBandwidth = 0;
+#endif
+
 	for (int i=0; i<3; i++)
 	{
 		gBias[i] = 0;
@@ -602,13 +656,19 @@ uint16_t beginIMU()
 		
 	// To verify communication, we can read from the WHO_AM_I register of
 	// each device. Store those in a variable so we can return them.
-	uint8_t mTest = mReadByte(WHO_AM_I_M);		// Read the gyro WHO_AM_I
 	uint8_t xgTest = xgReadByte(WHO_AM_I_XG);	// Read the accel/mag WHO_AM_I
-	uint16_t whoAmICombined = (xgTest << 8) | mTest;
 	
+#ifdef HW_3v4
+	uint8_t mTest = mReadByte(WHO_AM_I_M);		// Read the gyro WHO_AM_I
+	uint16_t whoAmICombined = (xgTest << 8) | mTest;
 	if (whoAmICombined != ((WHO_AM_I_AG_RSP << 8) | WHO_AM_I_M_RSP))
 		return 0;
-	
+#endif
+#if  defined(HW_4v0) || defined(HW_4v1)
+	uint16_t whoAmICombined = xgTest;
+	if (xgTest != WHO_AM_I_AG_RSP)
+		return 0;
+#endif
 	// Gyro initialization stuff:
 	initGyro();	// This will "turn on" the gyro. Setting up interrupts, etc.
 	
@@ -616,7 +676,9 @@ uint16_t beginIMU()
 	initAccel(); // "Turn on" all axes of the accel. Set up interrupts, etc.
 	
 	// Magnetometer initialization stuff:
+#ifdef HW_3v4
 	initMag(); // "Turn on" all axes of the mag. Set up interrupts, etc.
+#endif
 
 	// Once everything is initialized, return the WHO_AM_I registers we read:
 	return whoAmICombined;
@@ -624,14 +686,15 @@ uint16_t beginIMU()
 
 void initGyro()
 {
+#ifdef HW_3v4
 	uint8_t tempRegValue = 0;
-	
+
 	// CTRL_REG1_G (Default value: 0x00)
 	// [ODR_G2][ODR_G1][ODR_G0][FS_G1][FS_G0][0][BW_G1][BW_G0]
 	// ODR_G[2:0] - Output data rate selection
 	// FS_G[1:0] - Gyroscope full-scale selection
 	// BW_G[1:0] - Gyroscope bandwidth selection
-	
+
 	// To disable gyro, set sample rate bits to 0. We'll only set sample
 	// rate if the gyro is enabled.
 	if (settings.gyro.enabled)
@@ -641,22 +704,22 @@ void initGyro()
 	switch (settings.gyro.scale)
 	{
 		case 500:
-			tempRegValue |= (0x1 << 3);
-			break;
+		tempRegValue |= (0x1 << 3);
+		break;
 		case 2000:
-			tempRegValue |= (0x3 << 3);
-			break;
+		tempRegValue |= (0x3 << 3);
+		break;
 		// Otherwise we'll set it to 245 dps (0x0 << 4)
 	}
 	tempRegValue |= (settings.gyro.bandwidth & 0x3);
 	xgWriteByte(CTRL_REG1_G, tempRegValue);
-	
+
 	// CTRL_REG2_G (Default value: 0x00)
 	// [0][0][0][0][INT_SEL1][INT_SEL0][OUT_SEL1][OUT_SEL0]
 	// INT_SEL[1:0] - INT selection configuration
 	// OUT_SEL[1:0] - Out selection configuration
-	xgWriteByte(CTRL_REG2_G, 0x00);	
-	
+	xgWriteByte(CTRL_REG2_G, 0x00);
+
 	// CTRL_REG3_G (Default value: 0x00)
 	// [LP_mode][HP_EN][0][0][HPCF3_G][HPCF2_G][HPCF1_G][HPCF0_G]
 	// LP_mode - Low-power mode enable (0: disabled, 1: enabled)
@@ -668,7 +731,7 @@ void initGyro()
 		tempRegValue |= (1<<6) | (settings.gyro.HPFCutoff & 0x0F);
 	}
 	xgWriteByte(CTRL_REG3_G, tempRegValue);
-	
+
 	// CTRL_REG4 (Default value: 0x38)
 	// [0][0][Zen_G][Yen_G][Xen_G][0][LIR_XL1][4D_XL1]
 	// Zen_G - Z-axis output enable (0:disable, 1:enable)
@@ -682,7 +745,7 @@ void initGyro()
 	if (settings.gyro.enableX) tempRegValue |= (1<<3);
 	if (settings.gyro.latchInterrupt) tempRegValue |= (1<<1);
 	xgWriteByte(CTRL_REG4, tempRegValue);
-	
+
 	// ORIENT_CFG_G (Default value: 0x00)
 	// [0][0][SignX_G][SignY_G][SignZ_G][Orient_2][Orient_1][Orient_0]
 	// SignX_G - Pitch axis (X) angular rate sign (0: positive, 1: negative)
@@ -692,10 +755,77 @@ void initGyro()
 	if (settings.gyro.flipY) tempRegValue |= (1<<4);
 	if (settings.gyro.flipZ) tempRegValue |= (1<<3);
 	xgWriteByte(ORIENT_CFG_G, tempRegValue);
+#endif
+#if  defined(HW_4v0) || defined(HW_4v1)
+	uint8_t tempRegValue = 0;
+	
+	// CTRL_REG1_G (Default value: 0x00)
+	// [ODR_G2][ODR_G1][ODR_G0][FS_G1][FS_G0][0][BW_G1][BW_G0]
+	// ODR_G[2:0] - Output data rate selection
+	// FS_G[1:0] - Gyroscope full-scale selection
+	// BW_G[1:0] - Gyroscope bandwidth selection
+	
+	// To disable gyro, set sample rate bits to 0. We'll only set sample
+	// rate if the gyro is enabled.
+	if (settings.gyro.enabled)
+	{
+		tempRegValue = (settings.gyro.sampleRate & 0x0F) << 4;
+	}
+	switch (settings.gyro.scale)
+	{
+		case 500:
+			tempRegValue |= (0x1 << 2);
+			break;
+		case 1000:
+			tempRegValue |= (0x2 << 2);
+			break;
+		case 2000:
+			tempRegValue |= (0x3 << 2);
+			break;
+		// Otherwise we'll set it to 245 dps (0x0 << 4)
+	}
+	xgWriteByte(CTRL2_G, tempRegValue);
+
+	// CTRL_REG3_G (Default value: 0x00)
+	// [LP_mode][HP_EN][0][0][HPCF3_G][HPCF2_G][HPCF1_G][HPCF0_G]
+	// LP_mode - Low-power mode enable (0: disabled, 1: enabled)
+	// HP_EN - HPF enable (0:disabled, 1: enabled)
+	// HPCF_G[3:0] - HPF cutoff frequency
+	tempRegValue = settings.gyro.lowPowerEnable ? (1<<7) : 0;
+	if (settings.gyro.HPFEnable)
+	{
+		tempRegValue |= (1<<6) | ((settings.gyro.HPFCutoff & 0x03)<<4);
+	}
+	xgWriteByte(CTRL7_G, tempRegValue);
+	
+	// CTRL_REG4 (Default value: 0x38)
+	// [0][0][Zen_G][Yen_G][Xen_G][0][LIR_XL1][4D_XL1]
+	// Zen_G - Z-axis output enable (0:disable, 1:enable)
+	// Yen_G - Y-axis output enable (0:disable, 1:enable)
+	// Xen_G - X-axis output enable (0:disable, 1:enable)
+	// LIR_XL1 - Latched interrupt (0:not latched, 1:latched)
+	// 4D_XL1 - 4D option on interrupt (0:6D used, 1:4D used)
+	tempRegValue = 0;
+	if (settings.gyro.enableZ) tempRegValue |= (1<<5);
+	if (settings.gyro.enableY) tempRegValue |= (1<<4);
+	if (settings.gyro.enableX) tempRegValue |= (1<<3);
+	xgWriteByte(CTRL10_C, tempRegValue);
+	
+	// ORIENT_CFG_G (Default value: 0x00)
+	// [0][0][SignX_G][SignY_G][SignZ_G][Orient_2][Orient_1][Orient_0]
+	// SignX_G - Pitch axis (X) angular rate sign (0: positive, 1: negative)
+	// Orient [2:0] - Directional user orientation selection
+	tempRegValue = 0;
+	if (settings.gyro.flipX) tempRegValue |= (1<<5);
+	if (!settings.gyro.flipY) tempRegValue |= (1<<4); // Flip to align with LSM9D
+	if (settings.gyro.flipZ) tempRegValue |= (1<<3);
+	xgWriteByte(ORIENT_CFG_G, tempRegValue);
+#endif
 }
 
 void initAccel()
 {
+#ifdef HW_3v4
 	uint8_t tempRegValue = 0;
 	
 	//	CTRL_REG5_XL (0x1F) (Default value: 0x38)
@@ -726,14 +856,14 @@ void initAccel()
 	switch (settings.accel.scale)
 	{
 		case 4:
-			tempRegValue |= (0x2 << 3);
-			break;
+		tempRegValue |= (0x2 << 3);
+		break;
 		case 8:
-			tempRegValue |= (0x3 << 3);
-			break;
+		tempRegValue |= (0x3 << 3);
+		break;
 		case 16:
-			tempRegValue |= (0x1 << 3);
-			break;
+		tempRegValue |= (0x1 << 3);
+		break;
 		// Otherwise it'll be set to 2g (0x0 << 3)
 	}
 	if (settings.accel.bandwidth >= 0)
@@ -756,6 +886,63 @@ void initAccel()
 		tempRegValue |= (settings.accel.highResBandwidth & 0x3) << 5;
 	}
 	xgWriteByte(CTRL_REG7_XL, tempRegValue);
+#endif
+#if  defined(HW_4v0) || defined(HW_4v1)
+	uint8_t tempRegValue = 0;
+	
+	//	CTRL_REG5_XL (0x1F) (Default value: 0x38)
+	//	[DEC_1][DEC_0][Zen_XL][Yen_XL][Zen_XL][0][0][0]
+	//	DEC[0:1] - Decimation of accel data on OUT REG and FIFO.
+	//		00: None, 01: 2 samples, 10: 4 samples 11: 8 samples
+	//	Zen_XL - Z-axis output enabled
+	//	Yen_XL - Y-axis output enabled
+	//	Xen_XL - X-axis output enabled
+	if (settings.accel.enableZ) tempRegValue |= (1<<5);
+	if (settings.accel.enableY) tempRegValue |= (1<<4);
+	if (settings.accel.enableX) tempRegValue |= (1<<3);
+	xgWriteByte(CTRL9_XL, tempRegValue);
+	
+	// CTRL_REG6_XL (0x20) (Default value: 0x00)
+	// [ODR_XL3][ODR_XL2][ODR_XL1][ODR_XL0][FS1_XL][FS0_XL][BW_XL1][BW_XL0]
+	// ODR_XL[3:0] - Output data rate & power mode selection
+	// FS_XL[1:0] - Full-scale selection
+	// BW_XL[1:0] - Anti-aliasing filter bandwidth selection
+	tempRegValue = 0;
+	// To disable the accel, set the sampleRate bits to 0.
+	if (settings.accel.enabled)
+	{
+		tempRegValue |= (settings.accel.sampleRate & 0x0F) << 4;
+	}
+	switch (settings.accel.scale)
+	{
+		case 4:
+			tempRegValue |= (0x2 << 2);
+			break;
+		case 8:
+			tempRegValue |= (0x3 << 2);
+			break;
+		case 16:
+			tempRegValue |= (0x1 << 2);
+			break;
+		// Otherwise it'll be set to 2g (0x0 << 3)
+	}
+	tempRegValue |= (settings.accel.bandwidth & 0x03);
+	xgWriteByte(CTRL1_XL, tempRegValue);
+	
+	// CTRL_REG7_XL (0x21) (Default value: 0x00)
+	// [HR][DCF1][DCF0][0][0][FDS][0][HPIS1]
+	// HR - High resolution mode (0: disable, 1: enable)
+	// DCF[1:0] - Digital filter cutoff frequency
+	// FDS - Filtered data selection
+	// HPIS1 - HPF enabled for interrupt function
+	tempRegValue = 0;
+	if (settings.accel.highResEnable)
+	{
+		tempRegValue |= (1<<7); // Set HR bit
+		tempRegValue |= (settings.accel.highResBandwidth & 0x3) << 5;
+	}
+	xgWriteByte(CTRL8_XL, tempRegValue);
+#endif
 }
 
 // This is a function that uses the FIFO to accumulate sample of accelerometer and gyro data, average
@@ -766,20 +953,30 @@ void initAccel()
 // remove errors due to imprecise or varying initial placement. Calibration of sensor data in this manner
 // is good practice.
 void calibrate(bool autoCalc)
-{  
+{
+	_autoCalc = false; // Workaround so that calibrate doesnt include the current offset
 	//uint8_t data[6] = {0, 0, 0, 0, 0, 0};
-	uint8_t samples = 0;
+	uint16_t samples = 0;
 	int ii;
 	int32_t aBiasRawTemp[3] = {0, 0, 0};
 	int32_t gBiasRawTemp[3] = {0, 0, 0};
 	
 	// Turn on FIFO and set threshold to 32 samples
+#ifdef HW_3v4
 	enableFIFO(true);
 	setFIFO(FIFO_THS, 0x1F);
 	while (samples < 0x1F)
 	{
 		samples = (xgReadByte(FIFO_SRC) & 0x3F); // Read number of stored samples
 	}
+#endif
+#if  defined(HW_4v0) || defined(HW_4v1)
+	setFIFO(FIFO_THS, 0x003D);
+	while (samples < 0x003C)
+	{
+		samples = (((xgReadByte(FIFO_STATUS2) & 0x0F)<<8)|(xgReadByte(FIFO_STATUS1))); // Read number of stored samples
+	}
+#endif
 	for(ii = 0; ii < samples ; ii++) 
 	{	// Read the gyro data stored in the FIFO
 		readGyro();
@@ -798,8 +995,10 @@ void calibrate(bool autoCalc)
 		aBiasRaw[ii] = aBiasRawTemp[ii] / samples;
 		aBias[ii] = calcAccel(aBiasRaw[ii]);
 	}
-	
+
+#ifdef HW_3v4
 	enableFIFO(false);
+#endif
 	setFIFO(FIFO_OFF, 0x00);
 	
 	if (autoCalc) _autoCalc = true;
@@ -837,6 +1036,7 @@ void calibrateMag(bool loadIn)
 }
 void magOffset(uint8_t axis, int16_t offset)
 {
+#ifdef HW_3v4
 	if (axis > 2)
 		return;
 	uint8_t msb, lsb;
@@ -844,10 +1044,12 @@ void magOffset(uint8_t axis, int16_t offset)
 	lsb = offset & 0x00FF;
 	mWriteByte(OFFSET_X_REG_L_M + (2 * axis), lsb);
 	mWriteByte(OFFSET_X_REG_H_M + (2 * axis), msb);
+	#endif
 }
 
 void initMag()
 {
+#ifdef HW_3v4
 	uint8_t tempRegValue = 0;
 	
 	// CTRL_REG1_M (Default value: 0x10)
@@ -913,41 +1115,58 @@ void initMag()
 	//	0:continuous, 1:not updated until MSB/LSB are read
 	tempRegValue = 0;
 	mWriteByte(CTRL_REG5_M, tempRegValue);
+#endif
 }
 
 uint8_t accelAvailable()
 {
+#ifdef HW_3v4
 	uint8_t status = xgReadByte(STATUS_REG_1);
+
 	
 	return (status & (1<<0));
+#endif
 }
 
 uint8_t gyroAvailable()
 {
+#ifdef HW_3v4
 	uint8_t status = xgReadByte(STATUS_REG_1);
+
 	
 	return ((status & (1<<1)) >> 1);
+#endif
 }
 
 uint8_t tempAvailable()
 {
+#ifdef HW_3v4
 	uint8_t status = xgReadByte(STATUS_REG_1);
 	
 	return ((status & (1<<2)) >> 2);
+#endif
 }
 
 uint8_t magAvailable(enum lsm9ds1_axis axis)
 {
-	uint8_t status;
+#ifdef HW_3v4
+	uint8_t status = 0;
+
 	status = mReadByte(STATUS_REG_M);
 	
 	return ((status & (1<<axis)) >> axis);
+#endif
 }
 
 void readAccel()
 {
 	uint8_t temp[6]; // We'll read six bytes from the accelerometer into temp	
+#ifdef HW_3v4
 	xgReadBytes(OUT_X_L_XL, temp, 6); // Read 6 bytes, beginning at OUT_X_L_XL
+#endif
+#if  defined(HW_4v0) || defined(HW_4v1)
+	xgReadBytes(OUTX_L_XL, temp, 6); // Read 6 bytes, beginning at OUT_X_L_XL
+#endif
 	ax = (temp[1] << 8) | temp[0]; // Store x-axis values into ax
 	ay = (temp[3] << 8) | temp[2]; // Store y-axis values into ay
 	az = (temp[5] << 8) | temp[4]; // Store z-axis values into az
@@ -961,6 +1180,7 @@ void readAccel()
 
 int16_t readAccel_axis(enum lsm9ds1_axis axis)
 {
+#ifdef HW_3v4
 	uint8_t temp[2];
 	int16_t value;
 	xgReadBytes(OUT_X_L_XL + (2 * axis), temp, 2);
@@ -970,35 +1190,47 @@ int16_t readAccel_axis(enum lsm9ds1_axis axis)
 		value -= aBiasRaw[axis];
 	
 	return value;
+#endif
 }
 
 void readMag()
 {
+#ifdef HW_3v4
 	uint8_t temp[6]; // We'll read six bytes from the mag into temp	
 	mReadBytes(OUT_X_L_M, temp, 6); // Read 6 bytes, beginning at OUT_X_L_M
 	mx = (temp[1] << 8) | temp[0]; // Store x-axis values into mx
 	my = (temp[3] << 8) | temp[2]; // Store y-axis values into my
 	mz = (temp[5] << 8) | temp[4]; // Store z-axis values into mz
+#endif
 }
 
 int16_t readMag_axis(enum lsm9ds1_axis axis)
 {
+#ifdef HW_3v4
 	uint8_t temp[2];
 	mReadBytes(OUT_X_L_M + (2 * axis), temp, 2);
 	return (temp[1] << 8) | temp[0];
+#endif
 }
 
 void readTemp()
 {
+#ifdef HW_3v4
 	uint8_t temp[2]; // We'll read two bytes from the temperature sensor into temp	
 	xgReadBytes(OUT_TEMP_L, temp, 2); // Read 2 bytes, beginning at OUT_TEMP_L
 	temperature = ((int16_t)temp[1] << 8) | temp[0];
+#endif
 }
 
 void readGyro()
 {
-	uint8_t temp[6]; // We'll read six bytes from the gyro into temp
+	uint8_t temp[6]; // We'll read six bytes from the gyro into temp#ifdef HW_3v4
+#ifdef HW_3v4
 	xgReadBytes(OUT_X_L_G, temp, 6); // Read 6 bytes, beginning at OUT_X_L_G
+#endif
+#if defined(HW_4v0) || defined(HW_4v1)
+	xgReadBytes(OUTX_L_G, temp, 6); // Read 6 bytes, beginning at OUT_X_L_G
+#endif
 	gx = (temp[1] << 8) | temp[0]; // Store x-axis values into gx
 	gy = (temp[3] << 8) | temp[2]; // Store y-axis values into gy
 	gz = (temp[5] << 8) | temp[4]; // Store z-axis values into gz
@@ -1012,6 +1244,7 @@ void readGyro()
 
 int16_t readGyro_axis(enum lsm9ds1_axis axis)
 {
+#ifdef HW_3v4
 	uint8_t temp[2];
 	int16_t value;
 	
@@ -1023,6 +1256,7 @@ int16_t readGyro_axis(enum lsm9ds1_axis axis)
 		value -= gBiasRaw[axis];
 	
 	return value;
+#endif
 }
 
 float calcGyro(int16_t gyro)
@@ -1045,6 +1279,7 @@ float calcMag(int16_t mag)
 
 void setGyroScale(uint16_t gScl)
 {
+#ifdef HW_3v4
 	// Read current value of CTRL_REG1_G:
 	uint8_t ctrl1RegValue = xgReadByte(CTRL_REG1_G);
 	// Mask out scale bits (3 & 4):
@@ -1066,10 +1301,12 @@ void setGyroScale(uint16_t gScl)
 	xgWriteByte(CTRL_REG1_G, ctrl1RegValue);
 	
 	calcgRes();	
+#endif
 }
 
 void setAccelScale(uint8_t aScl)
 {
+#ifdef HW_3v4
 	// We need to preserve the other bytes in CTRL_REG6_XL. So, first read it:
 	uint8_t tempRegValue = xgReadByte(CTRL_REG6_XL);
 	// Mask out accel scale bits:
@@ -1097,10 +1334,12 @@ void setAccelScale(uint8_t aScl)
 	
 	// Then calculate a new aRes, which relies on aScale being set correctly:
 	calcaRes();
+#endif
 }
 
 void setMagScale(uint8_t mScl)
 {
+#ifdef HW_3v4
 	// We need to preserve the other bytes in CTRL_REG6_XM. So, first read it:
 	uint8_t temp = mReadByte(CTRL_REG2_M);
 	// Then mask out the mag scale bits:
@@ -1133,10 +1372,12 @@ void setMagScale(uint8_t mScl)
 	//mScale = mScl;
 	// Then calculate a new mRes, which relies on mScale being set correctly:
 	calcmRes();
+#endif
 }
 
 void setGyroODR(uint8_t gRate)
 {
+#ifdef HW_3v4
 	// Only do this if gRate is not 0 (which would disable the gyro)
 	if ((gRate & 0x07) != 0)
 	{
@@ -1150,10 +1391,12 @@ void setGyroODR(uint8_t gRate)
 		// And write the new register value back into CTRL_REG1_G:
 		xgWriteByte(CTRL_REG1_G, temp);
 	}
+#endif
 }
 
 void setAccelODR(uint8_t aRate)
 {
+#ifdef HW_3v4
 	// Only do this if aRate is not 0 (which would disable the accel)
 	if ((aRate & 0x07) != 0)
 	{
@@ -1167,10 +1410,12 @@ void setAccelODR(uint8_t aRate)
 		// And write the new register value back into CTRL_REG1_XM:
 		xgWriteByte(CTRL_REG6_XL, temp);
 	}
+#endif
 }
 
 void setMagODR(uint8_t mRate)
 {
+#ifdef HW_3v4
 	// We need to preserve the other bytes in CTRL_REG5_XM. So, first read it:
 	uint8_t temp = mReadByte(CTRL_REG1_M);
 	// Then mask out the mag ODR bits:
@@ -1180,6 +1425,7 @@ void setMagODR(uint8_t mRate)
 	settings.mag.sampleRate = mRate & 0x07;
 	// And write the new register value back into CTRL_REG5_XM:
 	mWriteByte(CTRL_REG1_M, temp);
+#endif
 }
 
 void calcgRes()
@@ -1216,6 +1462,7 @@ void calcmRes()
 void configInt(enum interrupt_select interrupt, uint8_t generator,
 	                     enum h_lactive activeLow, enum pp_od pushPull)
 {
+#ifdef HW_3v4
 	// Write to INT1_CTRL or INT2_CTRL. [interupt] should already be one of
 	// those two values.
 	// [generator] should be an OR'd list of values from the interrupt_generators enum
@@ -1232,10 +1479,12 @@ void configInt(enum interrupt_select interrupt, uint8_t generator,
 	else temp |= (1<<4);
 	
 	xgWriteByte(CTRL_REG8, temp);
+#endif
 }
 
 void configInactivity(uint8_t duration, uint8_t threshold, bool sleepOn)
 {
+#ifdef HW_3v4
 	uint8_t temp = 0;
 	
 	temp = threshold & 0x7F;
@@ -1243,26 +1492,32 @@ void configInactivity(uint8_t duration, uint8_t threshold, bool sleepOn)
 	xgWriteByte(ACT_THS, temp);
 	
 	xgWriteByte(ACT_DUR, duration);
+#endif
 }
 
 uint8_t getInactivity()
 {
+#ifdef HW_3v4
 	uint8_t temp = xgReadByte(STATUS_REG_0);
 	temp &= (0x10);
 	return temp;
+#endif
 }
 
 void configAccelInt(uint8_t generator, bool andInterrupts)
 {
+#ifdef HW_3v4
 	// Use variables from accel_interrupt_generator, OR'd together to create
 	// the [generator]value.
 	uint8_t temp = generator;
 	if (andInterrupts) temp |= 0x80;
 	xgWriteByte(INT_GEN_CFG_XL, temp);
+#endif
 }
 
 void configAccelThs(uint8_t threshold, enum lsm9ds1_axis axis, uint8_t duration, bool wait)
 {
+#ifdef HW_3v4
 	// Write threshold value to INT_GEN_THS_?_XL.
 	// axis will be 0, 1, or 2 (x, y, z respectively)
 	xgWriteByte(INT_GEN_THS_X_XL + axis, threshold);
@@ -1272,10 +1527,12 @@ void configAccelThs(uint8_t threshold, enum lsm9ds1_axis axis, uint8_t duration,
 	temp = (duration & 0x7F);
 	if (wait) temp |= 0x80;
 	xgWriteByte(INT_GEN_DUR_XL, temp);
+#endif
 }
 
 uint8_t getAccelIntSrc()
 {
+#ifdef HW_3v4
 	uint8_t intSrc = xgReadByte(INT_GEN_SRC_XL);
 	
 	// Check if the IA_XL (interrupt active) bit is set
@@ -1285,20 +1542,24 @@ uint8_t getAccelIntSrc()
 	}
 	
 	return 0;
+#endif
 }
 
 void configGyroInt(uint8_t generator, bool aoi, bool latch)
 {
+#ifdef HW_3v4
 	// Use variables from accel_interrupt_generator, OR'd together to create
 	// the [generator]value.
 	uint8_t temp = generator;
 	if (aoi) temp |= 0x80;
 	if (latch) temp |= 0x40;
 	xgWriteByte(INT_GEN_CFG_G, temp);
+#endif
 }
 
 void configGyroThs(int16_t threshold, enum lsm9ds1_axis axis, uint8_t duration, bool wait)
 {
+#ifdef HW_3v4
 	uint8_t buffer[2];
 	buffer[0] = (threshold & 0x7F00) >> 8;
 	buffer[1] = (threshold & 0x00FF);
@@ -1312,10 +1573,12 @@ void configGyroThs(int16_t threshold, enum lsm9ds1_axis axis, uint8_t duration, 
 	temp = (duration & 0x7F);
 	if (wait) temp |= 0x80;
 	xgWriteByte(INT_GEN_DUR_G, temp);
+#endif
 }
 
 uint8_t getGyroIntSrc()
 {
+#ifdef HW_3v4
 	uint8_t intSrc = xgReadByte(INT_GEN_SRC_G);
 	
 	// Check if the IA_G (interrupt active) bit is set
@@ -1325,10 +1588,12 @@ uint8_t getGyroIntSrc()
 	}
 	
 	return 0;
+#endif
 }
 
 void configMagInt(uint8_t generator, enum h_lactive activeLow, bool latch)
 {
+#ifdef HW_3v4
 	// Mask out non-generator bits (0-4)
 	uint8_t config = (generator & 0xE0);	
 	// IEA bit is 0 for active-low, 1 for active-high.
@@ -1339,18 +1604,22 @@ void configMagInt(uint8_t generator, enum h_lactive activeLow, bool latch)
 	if (generator != 0) config |= (1<<0);
 	
 	mWriteByte(INT_CFG_M, config);
+#endif
 }
 
 void configMagThs(uint16_t threshold)
 {
+#ifdef HW_3v4
 	// Write high eight bits of [threshold] to INT_THS_H_M
 	mWriteByte(INT_THS_H_M, (uint8_t)((threshold & 0x7F00) >> 8));
 	// Write low eight bits of [threshold] to INT_THS_L_M
 	mWriteByte(INT_THS_L_M, (uint8_t)threshold & 0x00FF);
+#endif
 }
 
 uint8_t getMagIntSrc()
 {
+#ifdef HW_3v4
 	uint8_t intSrc = mReadByte(INT_SRC_M);
 	
 	// Check if the INT (interrupt active) bit is set
@@ -1360,35 +1629,57 @@ uint8_t getMagIntSrc()
 	}
 	
 	return 0;
+#endif
 }
 
 void sleepGyro(bool enable)
 {
+#ifdef HW_3v4
 	uint8_t temp = xgReadByte(CTRL_REG9);
 	if (enable) temp |= (1<<6);
 	else temp &= ~(1<<6);
 	xgWriteByte(CTRL_REG9, temp);
+#endif
 }
 
 void enableFIFO(bool enable)
 {
+#ifdef HW_3v4
 	uint8_t temp = xgReadByte(CTRL_REG9);
 	if (enable) temp |= (1<<1);
 	else temp &= ~(1<<1);
 	xgWriteByte(CTRL_REG9, temp);
+#endif
 }
 
-void setFIFO(enum fifoMode_type fifoMode, uint8_t fifoThs)
+void setFIFO(enum fifoMode_type fifoMode, uint16_t fifoThs)
 {
 	// Limit threshold - 0x1F (31) is the maximum. If more than that was asked
 	// limit it to the maximum.
-	uint8_t threshold = fifoThs <= 0x1F ? fifoThs : 0x1F;
+#ifdef HW_3v4
+	uint16_t threshold = fifoThs <= 0x1F ? fifoThs : 0x1F;
 	xgWriteByte(FIFO_CTRL, ((fifoMode & 0x7) << 5) | (threshold & 0x1F));
+#endif
+#if  defined(HW_4v0) || defined(HW_4v1)
+	uint16_t threshold = fifoThs <= 0x0FFC ? fifoThs : 0x0FFC;
+	//xgWriteByte(MASTER_CONFIG, 0x00);//Set the STOP_ON_FTH bit to limit the FIFO memory depth
+	//xgWriteByte(CTRL3_C, 0x04);//Set the STOP_ON_FTH bit to limit the FIFO memory depth
+	xgWriteByte(CTRL4_C, 0x01);//Set the STOP_ON_FTH bit to limit the FIFO memory depth
+	//xgWriteByte(CTRL5_C, 0x00);//Set the STOP_ON_FTH bit to limit the FIFO memory depth
+	//xgWriteByte(CTRL6_C, 0x00);//Set the STOP_ON_FTH bit to limit the FIFO memory depth
+	xgWriteByte(FIFO_CTRL1, threshold & 0xFF);
+	xgWriteByte(FIFO_CTRL2, (threshold & 0x0F00)>>8);
+	xgWriteByte(FIFO_CTRL3, 0x09);//Set the FIFO to no accel or gyro decimation
+	xgWriteByte(FIFO_CTRL4, 0x09);//Set the FIFO to no accel or gyro decimation
+	xgWriteByte(FIFO_CTRL5, (fifoMode & 0x07)|0x40);//Set FIFO ODR to 6.66kHZ to enable FIFO
+#endif
 }
 
 uint8_t getFIFOSamples()
 {
+#ifdef HW_3v4
 	return (xgReadByte(FIFO_SRC) & 0x3F);
+#endif
 }
 
 void constrainScales()
@@ -1526,7 +1817,12 @@ uint8_t readBytes(uint8_t address, uint8_t subAddress, uint8_t * dest, uint8_t c
 	int timeout = 0;
 	
 	/* Init i2c packet. */
+#ifdef HW_3v4
 	write_buffer[0] = subAddress | 0x80;
+#endif
+#if  defined(HW_4v0) || defined(HW_4v1)
+	write_buffer[0] = subAddress;
+#endif
 	struct i2c_master_packet packet = {
 		.address     = address,
 		.data_length = 1,
@@ -1777,5 +2073,185 @@ void CorrectIMUvalues(uint8_t connector_orient, uint8_t power_orient){
 	}
 }
 
+void calculate_heading(){
+	headingTime = millis();
+	if(abs(gzKalman) >= 0.5){
+		if(headingTime < lheadingTime){
+			heading += (gzKalman) * (((float)(headingTime + (0xFFFFFFFF - lheadingTime)))/1000);
+		}
+		else
+			heading += (gzKalman) * (((float)(headingTime - lheadingTime))/1000);
+	}
+	lheadingTime = headingTime;
+	if(heading < 0)
+		heading = 360 + heading;
+	else if(heading > 360)
+		heading = heading - 360;
+}
+
+void update_kalman_limits(){
+	if(axKalman > kalmanAX_max)
+		kalmanAX_max = axKalman;
+	else if(axKalman < kalmanAX_min)
+		kalmanAX_min = axKalman;
+
+	if(ayKalman > kalmanAY_max)
+		kalmanAY_max = ayKalman;
+	else if(ayKalman < kalmanAY_min)
+		kalmanAY_min = ayKalman;
+
+	if(azKalman > kalmanAZ_max)
+		kalmanAZ_max = azKalman;
+	else if(azKalman < kalmanAZ_min)
+		kalmanAZ_min = azKalman;
+	
+	if(gxKalman > kalmanGX_max)
+		kalmanGX_max = gxKalman;
+	else if(gxKalman < kalmanGX_min)
+		kalmanGX_min = gxKalman;
+
+	if(gyKalman > kalmanGY_max)
+		kalmanGY_max = gyKalman;
+	else if(gyKalman < kalmanGY_min)
+		kalmanGY_min = gyKalman;
+
+	if(gzKalman > kalmanAZ_max)
+		kalmanGZ_max = gzKalman;
+	else if(gzKalman < kalmanGZ_min)
+		kalmanGZ_min = gzKalman;
+}
+
+int16_t averageAX(){
+	static int sample_index = 0;
+	AXtotal -= AXaverage[sample_index];
+	AXtotal += cax;
+	AXaverage[sample_index] = cax;
+	
+	sample_index++;
+	if(sample_index == ACCELXYsamples)
+	sample_index = 0;
+
+	return (int16_t)(AXtotal/ACCELXYsamples);
+}
+
+int16_t averageAY(){
+	static int sample_index = 0;
+	AYtotal -= AYaverage[sample_index];
+	AYtotal += cay;
+	AYaverage[sample_index] = cay;
+	
+	sample_index++;
+	if(sample_index == ACCELXYsamples)
+	sample_index = 0;
+
+	return (int16_t)(AYtotal/ACCELXYsamples);
+}
+
+int16_t averageAZ(){
+	static int sample_index = 0;
+	AZtotal -= AZaverage[sample_index];
+	AZtotal += caz;
+	AZaverage[sample_index] = caz;
+
+	sample_index++;
+	if(sample_index == ACCELZsamples)
+	sample_index = 0;
+
+	return (int16_t)(AZtotal/ACCELZsamples);
+}
+
+float averageGX(){
+	static int sample_index = 0;
+	GXtotal -= GXaverage[sample_index];
+	GXtotal += calcGyro(cgx);
+	GXaverage[sample_index] = calcGyro(cgx);
+
+	sample_index++;
+	if(sample_index == GYROsamples)
+	sample_index = 0;
+
+	return (GXtotal/GYROsamples);
+}
+
+float averageGY(){
+	static int sample_index = 0;
+	GYtotal -= GYaverage[sample_index];
+	GYtotal += calcGyro(cgy);
+	GYaverage[sample_index] = calcGyro(cgy);
+
+	sample_index++;
+	if(sample_index == GYROsamples)
+	sample_index = 0;
+
+	return (GYtotal/GYROsamples);
+}
+
+float averageGZ(){
+	static int sample_index = 0;
+	GZtotal -= GZaverage[sample_index];
+	GZtotal += calcGyro(cgz);
+	GZaverage[sample_index] = calcGyro(cgz);
+
+	sample_index++;
+	if(sample_index == GYROsamples)
+	sample_index = 0;
+
+	return (GZtotal/GYROsamples);
+}
+
+void initKalman(float meas, float est, float _q)
+{
+	for(int i = 0; i < KalmanArraySize; i++){
+		err_measure[i] = meas;
+		err_estimate[i] = est;
+		q[i] = _q;
+		current_estimate[i] = 0;
+		last_estimate[i] = 0;
+		kalman_gain[i] = 0;
+	}
+
+	err_measure[ax_kalman] = 15;
+	err_estimate[ax_kalman] = 15;
+	q[ax_kalman] = 0.3;
+
+	err_measure[ay_kalman] = 15;
+	err_estimate[ay_kalman] = 15;
+	q[ay_kalman] = 0.3;
+
+	// 	err_measure[ay_kalman] = 20;
+	// 	err_estimate[ay_kalman] = 20;
+	// 	q[ay_kalman] = 0.8;
+
+	err_measure[az_kalman] = 30;
+	err_estimate[az_kalman] = 30;
+	q[az_kalman] = 0.3;
+
+	// 	err_measure[gx_kalman] = 3;
+	// 	err_estimate[gx_kalman] = 3;
+	// 	q[gx_kalman] = 0.9;
+	//
+	// 	err_measure[gy_kalman] = 3;
+	// 	err_estimate[gy_kalman] = 3;
+	// 	q[gy_kalman] = 0.9;
+	//
+	// 	err_measure[gz_kalman] = 0.1;
+	// 	err_estimate[gz_kalman] = 1;
+	// 	q[gz_kalman] = 0.99;
+
+	err_measure[light_kalman] = 200;
+	err_estimate[light_kalman] = 200;
+	q[light_kalman] = 0.008;
+}
+
+float updateKalman(float meas, int kalmanIndex)
+{
+	kalman_gain[kalmanIndex] = err_estimate[kalmanIndex]/(err_estimate[kalmanIndex] + err_measure[kalmanIndex]);
+	kalman_gain[kalmanIndex] = max(kalman_gain[kalmanIndex],0.015);
+	current_estimate[kalmanIndex] = last_estimate[kalmanIndex] + kalman_gain[kalmanIndex] * (meas - last_estimate[kalmanIndex]);
+	err_estimate[kalmanIndex] =  (1.0 - kalman_gain[kalmanIndex])*err_estimate[kalmanIndex] + abs(last_estimate[kalmanIndex]-current_estimate[kalmanIndex])*q[kalmanIndex];
+	last_estimate[kalmanIndex]=current_estimate[kalmanIndex];
+
+	return current_estimate[kalmanIndex];
+}
 
 #endif

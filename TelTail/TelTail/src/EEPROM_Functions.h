@@ -21,7 +21,7 @@
 #define EEPROMFUNCS_H
 	
 #include "Controls.h"
-#include "IMU.h"
+#include "IMU_Functions.h"
 #include "Remote_Vars.h"
 
 //EEPROM globals
@@ -30,8 +30,8 @@ uint8_t eeprom_data[EEPROM_PAGE_SIZE];
 // Define functions
 void save_led_data(void);
 void restore_led_data(void);
-void save_orientation_controls_remote_esc(void);
-void restore_orientation_controls_remote_esc(void);
+void save_orientation_controls_remote_esc_lights(void);
+void restore_orientation_controls_remote_esc_lights(void);
 void save_cal_data(void);
 void restore_cal_data(bool autoCal);
 
@@ -93,6 +93,22 @@ void save_led_data(){
 	eeprom_data[15] = (Custom_RGB.RB & 0xFF);
 	eeprom_data[16] = (Custom_RGB.RB & 0xFF00) >> 8;
 
+	eeprom_data[17] = Digital_Static_Zoom;
+	eeprom_data[18] = Digital_Static_Shift;
+	eeprom_data[19] = Digital_Static_Brightness;
+	eeprom_data[20] = Digital_Skittles_Brightness;
+	eeprom_data[21] = Digital_Cycle_Zoom;
+	eeprom_data[22] = Digital_Cycle_Rate;
+	eeprom_data[23] = Digital_Cycle_Brightness;
+	eeprom_data[24] = Digital_Compass_Brightness;
+	eeprom_data[25] = Digital_Throttle_Zoom;
+	eeprom_data[26] = Digital_Throttle_Shift;
+	eeprom_data[27] = Digital_Throttle_Sens;
+	eeprom_data[28] = Digital_Throttle_Brightness;
+	eeprom_data[29] = Digital_RPM_Zoom;
+	eeprom_data[30] = Digital_RPM_Rate;
+	eeprom_data[31] = Digital_RPM_Brightness;
+
 	eeprom_emulator_write_page(1, eeprom_data);
 	eeprom_emulator_commit_page_buffer();
 }
@@ -107,7 +123,7 @@ void restore_led_data(){
 		HEADLIGHTS = (SWITCHES & 0x20) >> 5;
 		LIGHT_CONTROLLED = (SWITCHES & 0x40) >> 6;
 		IMU_CONTROLED = (SWITCHES & 0x80) >> 7;
-		light_mode = MODE_COLOR_CYCLE;
+		light_mode = MODE_ANALOG_COLOR_CYCLE;
 
 		Static_RGB.LR = 0;
 		Static_RGB.LG = 0xFFFF;
@@ -137,6 +153,22 @@ void restore_led_data(){
 		Custom_RGB.RR = 0;
 		Custom_RGB.RG = 0xFFFF;
 		Custom_RGB.RB = 0;
+
+		Digital_Static_Zoom = 1;
+		Digital_Static_Shift = 50;
+		Digital_Static_Brightness = 50;
+		Digital_Skittles_Brightness = 50;
+		Digital_Cycle_Zoom = 1;
+		Digital_Cycle_Rate = 50;
+		Digital_Cycle_Brightness = 50;
+		Digital_Compass_Brightness = 50;
+		Digital_Throttle_Zoom = 1;
+		Digital_Throttle_Shift = 50;
+		Digital_Throttle_Sens = 50;
+		Digital_Throttle_Brightness = 50;
+		Digital_RPM_Zoom = 7;
+		Digital_RPM_Rate = 50;
+		Digital_RPM_Brightness = 50;
 
 		save_led_data();
 	}
@@ -187,6 +219,22 @@ void restore_led_data(){
 		Custom_RGB.RG = (Custom_RGB.RG | (eeprom_data[14] << 8));
 		Custom_RGB.RB = eeprom_data[15];
 		Custom_RGB.RB = (Custom_RGB.RB | (eeprom_data[16] << 8));
+
+		Digital_Static_Zoom = eeprom_data[17];
+		Digital_Static_Shift = eeprom_data[18];
+		Digital_Static_Brightness = eeprom_data[19];
+		Digital_Skittles_Brightness = eeprom_data[20];
+		Digital_Cycle_Zoom = eeprom_data[21];
+		Digital_Cycle_Rate = eeprom_data[22];
+		Digital_Cycle_Brightness = eeprom_data[23];
+		Digital_Compass_Brightness = eeprom_data[24];
+		Digital_Throttle_Zoom = eeprom_data[25];
+		Digital_Throttle_Shift = eeprom_data[26];
+		Digital_Throttle_Sens = eeprom_data[27];
+		Digital_Throttle_Brightness = eeprom_data[28];
+		Digital_RPM_Zoom = eeprom_data[29];
+		Digital_RPM_Rate = eeprom_data[30];
+		Digital_RPM_Brightness = eeprom_data[31];
 	}
 }
 
@@ -254,7 +302,7 @@ void restore_cal_data(bool autoCal)
 	_autoCalc = autoCal;
 }
 
-void save_orientation_controls_remote_esc()
+void save_orientation_controls_remote_esc_lights()
 {
 	for(int i = 0; i < EEPROM_PAGE_SIZE; i++){
 		eeprom_data[0] = 0;
@@ -284,13 +332,18 @@ void save_orientation_controls_remote_esc()
 	
 	eeprom_data[19] = esc_fw;
 	eeprom_data[20] = ((esc_comms << 4) | (UART_baud & 0x0F));//*/
+	
+	eeprom_data[21] = (RGB_led_type << 4) | brake_light_mode;
+	eeprom_data[22] = deadzone;
+	eeprom_data[23] = led_num;
+	eeprom_data[24] = (SYNC_RGB << 7) | (BRAKE_ALWAYS_ON << 6);
 
 	//Write EEPROM data
 	eeprom_emulator_write_page(3, eeprom_data);
 	eeprom_emulator_commit_page_buffer();
 }
 
-void restore_orientation_controls_remote_esc()
+void restore_orientation_controls_remote_esc_lights()
 {
 	eeprom_emulator_read_page(3, eeprom_data);
 
@@ -324,7 +377,14 @@ void restore_orientation_controls_remote_esc()
 		esc_comms = 2;
 		UART_baud = 3;
 
-		save_orientation_controls_remote_esc();
+		RGB_led_type = RGB_ANALOG;
+		brake_light_mode = BRAKE_FADE;
+		deadzone = 10;
+		led_num = 30;
+		SYNC_RGB = true;
+		BRAKE_ALWAYS_ON = false;
+
+		save_orientation_controls_remote_esc_lights();
 	}
 	else { // else restore the stored data
 		ORIENTATION[0] = eeprom_data[0];
@@ -354,6 +414,13 @@ void restore_orientation_controls_remote_esc()
 		esc_fw = eeprom_data[19];
 		esc_comms = ((eeprom_data[20]&0xF0)>>4);
 		UART_baud = (eeprom_data[20]&0x0F);//*/
+		
+		RGB_led_type = ((eeprom_data[21]&0xF0)>>4);
+		brake_light_mode = (eeprom_data[21]&0x0F);
+		deadzone = eeprom_data[22];
+		led_num = eeprom_data[23];
+		SYNC_RGB = ((eeprom_data[24]&0x80)>>7);
+		BRAKE_ALWAYS_ON = ((eeprom_data[24]&0x40)>>6);
 	}
 }
 

@@ -153,12 +153,13 @@ src/main.d src/main.o: ../src/main.c ../src/asf.h \
  ../src/ASF/sam0/drivers/tc/tc_interrupt.h \
  ../src/ASF/sam0/drivers/tc/tc.h ../src/ASF/sam0/drivers/tcc/tcc.h \
  ../src/ASF/sam0/drivers/tcc/tcc_callback.h \
- ../src/ASF/sam0/drivers/tcc/tcc.h ../src/IMU.h \
- ../src/LSM9DS1_Registers.h ../src/LSM9DS1_Types.h ../src/Timing.h \
- ../src/Remote_Vars.h ../src/ESC_Vars.h ../src/LED_Vars.h \
- ../src/LED_Functions.h ../src/Controls.h ../src/VESC_UART.h ../src/crc.h \
+ ../src/ASF/sam0/drivers/tcc/tcc.h ../src/Config.h ../src/IMU_Vars.h \
+ ../src/IMU_Functions.h ../src/LSM9DS1_Registers.h ../src/LSM9DS1_Types.h \
+ ../src/LED_Functions.h ../src/LED_Vars.h ../src/Timing.h ../src/APA102.h \
+ ../src/SK9822.h ../src/ESC_Vars.h ../src/Remote_Vars.h ../src/Controls.h \
+ ../src/VESC_UART.h ../src/crc.h \
  c:\disks\atmel\studio\7.0\toolchain\arm\arm-gnu-toolchain\arm-none-eabi\include\math.h \
- ../src/EEPROM_Functions.h ../src/BLE_UART.h
+ ../src/EEPROM_Functions.h ../src/BLE_UART.h ../src/WS2812.h
 
 ../src/asf.h:
 
@@ -484,21 +485,29 @@ c:\disks\atmel\studio\7.0\toolchain\arm\arm-gnu-toolchain\arm-none-eabi\include\
 
 ../src/ASF/sam0/drivers/tcc/tcc.h:
 
-../src/IMU.h:
+../src/Config.h:
+
+../src/IMU_Vars.h:
+
+../src/IMU_Functions.h:
 
 ../src/LSM9DS1_Registers.h:
 
 ../src/LSM9DS1_Types.h:
 
-../src/Timing.h:
-
-../src/Remote_Vars.h:
-
-../src/ESC_Vars.h:
+../src/LED_Functions.h:
 
 ../src/LED_Vars.h:
 
-../src/LED_Functions.h:
+../src/Timing.h:
+
+../src/APA102.h:
+
+../src/SK9822.h:
+
+../src/ESC_Vars.h:
+
+../src/Remote_Vars.h:
 
 ../src/Controls.h:
 
@@ -511,3 +520,5 @@ c:\disks\atmel\studio\7.0\toolchain\arm\arm-gnu-toolchain\arm-none-eabi\include\
 ../src/EEPROM_Functions.h:
 
 ../src/BLE_UART.h:
+
+../src/WS2812.h:

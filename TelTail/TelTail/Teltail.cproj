@@ -755,6 +755,9 @@
     <Folder Include="src\config\" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="src\APA102.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="src\ASF\common\services\sleepmgr\samd\sleepmgr.c">
       <SubType>compile</SubType>
     </Compile>
@@ -770,16 +773,28 @@
     <Compile Include="src\BLE_UART.h">
       <SubType>compile</SubType>
     </Compile>
+    <Compile Include="src\Config.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="src\ESC_Vars.h">
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="src\crc.h">
       <SubType>compile</SubType>
     </Compile>
+    <Compile Include="src\IMU_Vars.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="src\Remote_Vars.h">
       <SubType>compile</SubType>
     </Compile>
+    <Compile Include="src\SK9822.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="src\VESC_UART.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="src\WS2812.h">
       <SubType>compile</SubType>
     </Compile>
     <None Include="src\ASF\sam0\drivers\tcc\quick_start_faultn\qs_tcc_faultn.h">
@@ -1490,7 +1505,7 @@
     <Compile Include="src\ASF\sam0\utils\syscalls\gcc\syscalls.c">
       <SubType>compile</SubType>
     </Compile>
-    <Compile Include="src\IMU.h">
+    <Compile Include="src\IMU_Functions.h">
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="src\LSM9DS1_Registers.h">

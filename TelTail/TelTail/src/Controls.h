@@ -515,10 +515,10 @@ void HandleAppRemote(){
 		NEW_REMOTE_DATA = false;
 		SEND_VESC_CHUCK = true;
 		//AppControlled = true;
-	} else if(millis()-app_remote_time <= app_remote_soft_timeout){
+	} else if(SEND_VESC_CHUCK && millis()-app_remote_time <= app_remote_soft_timeout){
 		send_chuck_struct.js_y = remote_y = AppRemoteY;
 		SEND_VESC_CHUCK = true;
-	} else if(millis()-app_remote_time <= app_remote_hard_timeout){
+	} else if(SEND_VESC_CHUCK && millis()-app_remote_time <= app_remote_hard_timeout){
 		send_chuck_struct.js_y = remote_y = 0xFF/2;
 		SEND_VESC_CHUCK = true;
 	}

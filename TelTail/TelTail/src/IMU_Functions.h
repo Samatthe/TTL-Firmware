@@ -666,7 +666,7 @@ uint16_t beginIMU()
 #endif
 #if  defined(HW_4v0) || defined(HW_4v1)
 	uint16_t whoAmICombined = xgTest;
-	if (xgTest != WHO_AM_I_AG_RSP)
+	if (xgTest != 0x69 && xgTest != 0x6A && xgTest != 0x6B && xgTest != 0x6C)//WHO_AM_I_AG_RSP) // A work around to protect for the use of al LSM6DS parts
 		return 0;
 #endif
 	// Gyro initialization stuff:

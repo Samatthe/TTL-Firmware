@@ -310,6 +310,12 @@ int main (void)
 	config_evsys();  // Configure the event system
 	config_gpio();   // Configure the dedicated pin
 
+	
+	configure_LED_PWM();
+	if(RGB_led_type == RGB_DIGITAL_APA102 || RGB_led_type == RGB_DIGITAL_SK9822){
+		configure_APA_SPI();
+	}
+
 	//ERROR_LEDs(0);
 #if  defined(HW_4v0) || defined(HW_4v1)
 	port_pin_set_output_level(STAT_LED, true);
@@ -317,7 +323,7 @@ int main (void)
 	configure_BLE_module(); // Blocks when no BLE module is installed
 	initIMU();
 	restore_cal_data(true);
-	if(!beginIMU()) ERROR_LEDs(0);
+	if(!beginIMU()){} //ERROR_LEDs(0);
 #if  defined(HW_4v0) || defined(HW_4v1)
 	port_pin_set_output_level(STAT_LED, false);
 #endif
@@ -330,11 +336,6 @@ int main (void)
 		configure_i2c_slave_callbacks();
 	} else if(esc_comms == COMMS_UART){
 		// Nothing to do
-	}
-
-	configure_LED_PWM();
-	if(RGB_led_type == RGB_DIGITAL_APA102 || RGB_led_type == RGB_DIGITAL_SK9822){
-		configure_APA_SPI();
 	}
 	
 	//ERROR_LEDs(1); // Uncomment for testing SAM-BA and LED output functionality
@@ -374,7 +375,7 @@ int main (void)
 			NVIC_SystemReset();
 
 		// Handle BLE Communication
-		read_ble_packet();
+		read_ble_packet(); // Blocks when BLE is not configured
 
 		if(configured_comms != esc_comms)
 		{
@@ -409,7 +410,7 @@ int main (void)
 		
 		////////////////////////////   Communicate with ESC   /////////////////////////////
 		///////////////////////////////////////////////////////////////////////////////////
-
+		
 		if(esc_comms == COMMS_UART){
 			if(ESC_UART_CONFIGED){
 				read_vesc_packet();
@@ -927,14 +928,14 @@ int main (void)
 		///////////////////////////////////////////////////////////////////////////////////
 		HandleAppRemote();
 
-
+		
 		//////////////////////////////////   LED MODES   //////////////////////////////////
 		///////////////////////////////////////////////////////////////////////////////////
 		if(sensorControl() && LIGHTS_ON){
 			if(SIDELIGHTS && lightControlSide()){
 				if(RGB_led_type == RGB_ANALOG){
 					AnalogSideLights();
-				}else if(RGB_led_type == RGB_DIGITAL_APA102 || RGB_led_type == RGB_DIGITAL_APA102) { // Digital LED Functions
+				}else if(RGB_led_type == RGB_DIGITAL_APA102 || RGB_led_type == RGB_DIGITAL_SK9822) { // Digital LED Functions
 					DigitalSideLights();
 				} else{
 					//No RGB LEDs

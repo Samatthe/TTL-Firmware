@@ -260,6 +260,7 @@ void ERROR_LEDs(uint8_t error_type){
 		setRed(0);
 		setWhite(0);
 		setAux(0);
+		port_pin_set_output_level(STAT_LED, false);
 
 		while(millis() - timer < 1000) {
 			check_time(&timer);
@@ -272,6 +273,7 @@ void ERROR_LEDs(uint8_t error_type){
 		setRed(0xFFFF);
 		setWhite(0xFFFF);
 		setAux(1);
+		port_pin_set_output_level(STAT_LED, true);
 
 		while(millis() - timer < 250) {
 			check_time(&timer);

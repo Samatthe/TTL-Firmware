@@ -267,7 +267,9 @@ void ERROR_LEDs(uint8_t error_type){
 		
 		setRed(0);
 		setWhite(0);
+#if  defined(HW_4v0) || defined(HW_4v1)
 		port_pin_set_output_level(STAT_LED, false);
+#endif
 
 		while(millis() - timer < 1000) {
 			///if(RGB_led_type != RGB_ANALOG) {
@@ -310,7 +312,9 @@ void ERROR_LEDs(uint8_t error_type){
 		
 		setRed(0xFFFF);
 		setWhite(0xFFFF);
+#if  defined(HW_4v0) || defined(HW_4v1)
 		port_pin_set_output_level(STAT_LED, true);
+#endif
 
 		while(millis() - timer < 250) {
 			check_time(&timer);

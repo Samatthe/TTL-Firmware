@@ -2,6 +2,7 @@
 #define APA102_H
 
 #include "LED_Vars.h"
+#define APA_BAUD 160000 // 4000000 max = 0.25us
 
 void configure_APA_SPI(void);
 
@@ -11,7 +12,7 @@ void configure_APA_SPI(void)
 	
 	/* Configure, initialize and enable Left APA SPI module (SERCOM4)*/
 	spi_get_config_defaults(&config_spi_master);
-	config_spi_master.mode_specific.master.baudrate = 80000;
+	config_spi_master.mode_specific.master.baudrate = APA_BAUD;
 	config_spi_master.mux_setting = SPI_SIGNAL_MUX_SETTING_I;
 	config_spi_master.pinmux_pad0 = PINMUX_PA13D_SERCOM4_PAD1; //CLK
 	config_spi_master.pinmux_pad1 = PINMUX_UNUSED;
@@ -22,7 +23,7 @@ void configure_APA_SPI(void)
 
     /* Configure, initialize and enable Right APA SPI module (SERCOM0)*/
     spi_get_config_defaults(&config_spi_master);
-    config_spi_master.mode_specific.master.baudrate = 80000;
+    config_spi_master.mode_specific.master.baudrate = APA_BAUD;
     config_spi_master.mux_setting = SPI_SIGNAL_MUX_SETTING_F;
     config_spi_master.pinmux_pad0 = PINMUX_UNUSED;
     config_spi_master.pinmux_pad1 = PINMUX_UNUSED;

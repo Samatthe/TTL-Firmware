@@ -320,10 +320,10 @@ int main (void)
 #if  defined(HW_4v0) || defined(HW_4v1)
 	port_pin_set_output_level(STAT_LED, true);
 #endif
-	configure_BLE_module(); // Blocks when no BLE module is installed
+	configure_BLE_module();
 	initIMU();
 	restore_cal_data(true);
-	if(!beginIMU()){} //ERROR_LEDs(0);
+	if(!beginIMU()){ERROR_LEDs(0);}
 #if  defined(HW_4v0) || defined(HW_4v1)
 	port_pin_set_output_level(STAT_LED, false);
 #endif
@@ -367,7 +367,7 @@ int main (void)
 	mcconf_limits.min_erpm = -1000000;
 
 	////////////////////////////////////////////
-	
+	LIGHTS_ON = DEFAULT_STATE;
 	while(1)
 	{
 		// Reset the module if PA15 is pulled low
@@ -410,7 +410,6 @@ int main (void)
 		
 		////////////////////////////   Communicate with ESC   /////////////////////////////
 		///////////////////////////////////////////////////////////////////////////////////
-		
 		if(esc_comms == COMMS_UART){
 			if(ESC_UART_CONFIGED){
 				read_vesc_packet();
@@ -432,10 +431,10 @@ int main (void)
 		///////////////////////////////   Process Sensor data   //////////////////////////////
 		///////////////////////////////////////////////////////////////////////////////////
 
-		readAccel();
+		readAccel(); // ~5ms combined
 		readGyro();
 #ifdef HW_3v4
-		readMag();
+		//readMag();
 #endif
 
 		// All IMU measurements are corrected to orient power to front and connectors up
@@ -893,7 +892,7 @@ int main (void)
 			ble_write_buffer[1] = (uint8_t)(RGB_led_type << 4) | brake_light_mode;
 			ble_write_buffer[2] = (uint8_t)(deadzone);
 			ble_write_buffer[3] = (uint8_t)(led_num);
-			ble_write_buffer[4] = (uint8_t)(SYNC_RGB << 7 | BRAKE_ALWAYS_ON << 6);
+			ble_write_buffer[4] = (uint8_t)(SYNC_RGB << 7 | BRAKE_ALWAYS_ON << 6 | DEFAULT_STATE << 5);
 			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 5);
 
 			SEND_Lights_CONFIG = 0;
@@ -988,7 +987,7 @@ int main (void)
 					DIGITAL_OFF = true;
 				}
 			}
-		}//*/
+		}
 		BrakeLight();
 	}
 }

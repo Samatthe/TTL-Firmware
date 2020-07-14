@@ -42,8 +42,6 @@ uint8_t COMM_ALIVE = 0;
 uint8_t COMM_GET_DECODED_PPM = 0;
 uint8_t COMM_GET_DECODED_CHUK = 0;
 uint8_t COMM_SET_CHUCK_DATA = 0;
-uint8_t COMM_GET_VALUES_SELECTIVE = 0;
-uint8_t COMM_GET_IMU_DATA = 0;
 
 // Location in payload of COMM_GET_VALUES
 uint8_t GET_VALUES_FET_TEMP = 0; 
@@ -109,9 +107,10 @@ bool VESC_PACKET_RECIEVED = false;
 bool ESC_UART_CONFIGED = false;
 bool ESC_UART_PIN_CONFIG = false;
 
-///////////   VESC Communication Variables   ///////////
+///////////   ESC Communication Variables   ///////////
 ////////////////////////////////////////////////////////
 uint8_t configured_comms = COMMS_NONE;
+uint32_t ESC_noise_timer = 0;
 
 
 void configure_vesc_usart(void);
@@ -133,7 +132,7 @@ struct uart_packet recieve_packet(void);
 bool CHECK_BUFFER(uint8_t *buf);
 void read_vesc_packet(void);
 void detect_esc_baud_pins(void);
-bool CHECK_FOR_NOISE(struct usart_module *const module, uint8_t buf[MAX_PAYLOAD_LEN+6], uint16_t max_size);
+bool CHECK_FOR_NOISE(struct usart_module *const module, uint8_t buf[MAX_PAYLOAD_LEN+6], uint16_t max_size, uint32_t *noise_timer);
 
 float buffer_get_float32_auto(uint8_t *buffer, int8_t index);
 
@@ -227,97 +226,99 @@ void send_packet(struct uart_packet send_pak){
 }
 
 void process_recieved_packet(){
-		uint8_t packet_id = vesc_revieve_packet.payload[0];
-		if(packet_id == COMM_FW_VERSION){ // Bytes are the same for all FW's
-			latest_vesc_vals.FW_VERSION_MAJOR = (uint16_t)vesc_revieve_packet.payload[1];
-			latest_vesc_vals.FW_VERSION_MINOR = (uint16_t)vesc_revieve_packet.payload[2];
-		} else if(packet_id == COMM_GET_VALUES){
-			latest_vesc_vals.temp_fet_filtered = (vesc_revieve_packet.payload[GET_VALUES_FET_TEMP] << 8) | vesc_revieve_packet.payload[GET_VALUES_FET_TEMP+1];
-			latest_vesc_vals.avg_motor_current = (vesc_revieve_packet.payload[GET_VALUES_MTR_CURR] << 24) | (vesc_revieve_packet.payload[GET_VALUES_MTR_CURR+1] << 16) | (vesc_revieve_packet.payload[GET_VALUES_MTR_CURR+2] << 8) | vesc_revieve_packet.payload[GET_VALUES_MTR_CURR+3];
-			latest_vesc_vals.avg_input_current = (vesc_revieve_packet.payload[GET_VALUES_IN_CURR] << 24) | (vesc_revieve_packet.payload[GET_VALUES_IN_CURR+1] << 16) | (vesc_revieve_packet.payload[GET_VALUES_IN_CURR+2] << 8) | vesc_revieve_packet.payload[GET_VALUES_IN_CURR+3];
-			latest_vesc_vals.duty_cycle = (vesc_revieve_packet.payload[GET_VALUES_DUTY] << 8) | vesc_revieve_packet.payload[GET_VALUES_DUTY+1];
-			latest_vesc_vals.rpm = (vesc_revieve_packet.payload[GET_VALUES_RPM] << 24) | (vesc_revieve_packet.payload[GET_VALUES_RPM+1] << 16) | (vesc_revieve_packet.payload[GET_VALUES_RPM+2] << 8) | vesc_revieve_packet.payload[GET_VALUES_RPM+3];
-			latest_vesc_vals.INPUT_VOLTAGE = (vesc_revieve_packet.payload[GET_VALUES_IN_VOLT] << 8) | vesc_revieve_packet.payload[GET_VALUES_IN_VOLT+1];
-			latest_vesc_vals.amp_hours = ((vesc_revieve_packet.payload[GET_VALUES_AH_USED] << 24) | (vesc_revieve_packet.payload[GET_VALUES_AH_USED+1] << 16) | (vesc_revieve_packet.payload[GET_VALUES_AH_USED+2] << 8) | vesc_revieve_packet.payload[GET_VALUES_AH_USED+3])/100;
-			latest_vesc_vals.amp_hours_charged = ((vesc_revieve_packet.payload[GET_VALUES_AH_CHRG] << 24) | (vesc_revieve_packet.payload[GET_VALUES_AH_CHRG+1] << 16) | (vesc_revieve_packet.payload[GET_VALUES_AH_CHRG+2] << 8) | vesc_revieve_packet.payload[GET_VALUES_AH_CHRG+3])/100;
-			latest_vesc_vals.watt_hours = ((vesc_revieve_packet.payload[GET_VALUES_WH_USED] << 24) | (vesc_revieve_packet.payload[GET_VALUES_WH_USED+1] << 16) | (vesc_revieve_packet.payload[GET_VALUES_WH_USED+2] << 8) | vesc_revieve_packet.payload[GET_VALUES_WH_USED+3])/100;
-			latest_vesc_vals.watt_hours_charged = ((vesc_revieve_packet.payload[GET_VALUES_WH_CHRG] << 24) | (vesc_revieve_packet.payload[GET_VALUES_WH_CHRG+1] << 16) | (vesc_revieve_packet.payload[GET_VALUES_WH_CHRG+2] << 8) | vesc_revieve_packet.payload[GET_VALUES_WH_CHRG+3])/100;
-			latest_vesc_vals.tachometer_value = (vesc_revieve_packet.payload[GET_VALUES_TACH] << 24) | (vesc_revieve_packet.payload[GET_VALUES_TACH+1] << 16) | (vesc_revieve_packet.payload[GET_VALUES_TACH+2] << 8) | vesc_revieve_packet.payload[GET_VALUES_TACH+2];
-			latest_vesc_vals.fault = vesc_revieve_packet.payload[GET_VALUES_FAULT];
-		} else if(packet_id == COMM_GET_MCCONF){
-			if(esc_fw == FW_2v18){
-				mcconf_limits.motor_current_max = ((vesc_revieve_packet.payload[GET_MCCONF_MTR_CURR_MAX] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_MTR_CURR_MAX+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_MTR_CURR_MAX+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_MTR_CURR_MAX+3])/1000;
-				mcconf_limits.motor_current_min = ((vesc_revieve_packet.payload[GET_MCCONF_MTR_CURR_MIN] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_MTR_CURR_MIN+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_MTR_CURR_MIN+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_MTR_CURR_MIN+3])/1000;
-				mcconf_limits.input_current_max = ((vesc_revieve_packet.payload[GET_MCCONF_IN_CURR_MAX] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_IN_CURR_MAX+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_IN_CURR_MAX+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_IN_CURR_MAX+3])/1000;
-				mcconf_limits.input_current_min = ((vesc_revieve_packet.payload[GET_MCCONF_IN_CURR_MIN] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_IN_CURR_MIN+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_IN_CURR_MIN+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_IN_CURR_MIN+3])/1000;
-				mcconf_limits.abs_current_max = ((vesc_revieve_packet.payload[GET_MCCONF_ABS_CURR_MAX] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_ABS_CURR_MAX+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_ABS_CURR_MAX+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_ABS_CURR_MAX+3])/1000;
-				mcconf_limits.min_erpm = ((vesc_revieve_packet.payload[GET_MCCONF_ERPM_MIN] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_ERPM_MIN+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_ERPM_MIN+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_ERPM_MIN+3])/1000;
-				mcconf_limits.max_erpm = ((vesc_revieve_packet.payload[GET_MCCONF_ERPM_MAX] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_ERPM_MAX+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_ERPM_MAX+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_ERPM_MAX+3])/1000;
-				mcconf_limits.max_erpm_fbrake = ((vesc_revieve_packet.payload[GET_MCCONF_ERPM_FBRAKE_MAX] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_ERPM_FBRAKE_MAX+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_ERPM_FBRAKE_MAX+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_ERPM_FBRAKE_MAX+3])/1000;
-				mcconf_limits.max_erpm_fbrake_cc = ((vesc_revieve_packet.payload[GET_MCCONF_ERPM_FBRAKE_CC_MAX] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_ERPM_FBRAKE_CC_MAX+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_ERPM_FBRAKE_CC_MAX+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_ERPM_FBRAKE_CC_MAX+3])/1000;
-				mcconf_limits.min_vin = ((vesc_revieve_packet.payload[GET_MCCONF_VIN_MIN] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_VIN_MIN+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_VIN_MIN+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_VIN_MIN+3])/1000;
-				mcconf_limits.max_vin = ((vesc_revieve_packet.payload[GET_MCCONF_VIN_MAX] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_VIN_MAX+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_VIN_MAX+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_VIN_MAX+3])/1000;
-				mcconf_limits.battery_cut_start = ((vesc_revieve_packet.payload[GET_MCCONF_BAT_CUT_STRT] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_BAT_CUT_STRT+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_BAT_CUT_STRT+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_BAT_CUT_STRT+3])/1000;
-				mcconf_limits.battery_cut_end = ((vesc_revieve_packet.payload[GET_MCCONF_BAT_CUT_END] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_BAT_CUT_END+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_BAT_CUT_END+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_BAT_CUT_END+3])/1000;
-				mcconf_limits.temp_fet_start = ((vesc_revieve_packet.payload[GET_MCCONF_TMP_FET_STRT] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_TMP_FET_STRT+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_TMP_FET_STRT+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_TMP_FET_STRT+3])/1000;
-				mcconf_limits.temp_fet_end = ((vesc_revieve_packet.payload[GET_MCCONF_TMP_FET_END] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_TMP_FET_END+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_TMP_FET_END+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_TMP_FET_END+3])/1000;
-				mcconf_limits.temp_motor_start = ((vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_STRT] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_STRT+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_STRT+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_STRT+2])/1000;
-				mcconf_limits.temp_motor_end = ((vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_END] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_END+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_END+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_END+3])/1000;
-				mcconf_limits.min_duty = ((vesc_revieve_packet.payload[GET_MCCONF_DUTY_MIN] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_DUTY_MIN+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_DUTY_MIN+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_DUTY_MIN+3])/1000;
-				mcconf_limits.max_duty = ((vesc_revieve_packet.payload[GET_MCCONF_DUTY_MAX] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_DUTY_MAX+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_DUTY_MAX+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_DUTY_MAX+3])/1000;
-			} else{
-				mcconf_limits.motor_current_max = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_MTR_CURR_MAX);
-				mcconf_limits.motor_current_min = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_MTR_CURR_MIN);
-				mcconf_limits.input_current_max = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_IN_CURR_MAX);
-				mcconf_limits.input_current_min = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_IN_CURR_MIN);
-				mcconf_limits.abs_current_max = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_ABS_CURR_MAX);
-				mcconf_limits.min_erpm = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_ERPM_MIN);
-				mcconf_limits.max_erpm = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_ERPM_MAX);
-				mcconf_limits.max_erpm_fbrake = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_ERPM_FBRAKE_MAX);
-				mcconf_limits.max_erpm_fbrake_cc = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_ERPM_FBRAKE_CC_MAX);
-				mcconf_limits.min_vin = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_VIN_MIN);
-				mcconf_limits.max_vin = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_VIN_MAX);
-				mcconf_limits.battery_cut_start = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_BAT_CUT_STRT);
-				mcconf_limits.battery_cut_end = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_BAT_CUT_END);
-				mcconf_limits.temp_fet_start = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_TMP_FET_STRT);
-				mcconf_limits.temp_fet_end = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_TMP_FET_END);
-				mcconf_limits.temp_motor_start = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_TMP_MTR_STRT);
-				mcconf_limits.temp_motor_end = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_TMP_MTR_END);
-				mcconf_limits.min_duty = (buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_DUTY_MIN)*100);
-				mcconf_limits.max_duty = (buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_DUTY_MAX)*100);
-			}
-			GET_LIMITS = 0;
-			SEND_LIMITS = 1;
-		} else if(packet_id == COMM_GET_DECODED_PPM){
-			latest_vesc_vals.pwm_val = (int32_t)(((vesc_revieve_packet.payload[1]&0x00FF)<<24)|((vesc_revieve_packet.payload[2]&0x00FF)<<16)|((vesc_revieve_packet.payload[3]&0x00FF)<<8)|(vesc_revieve_packet.payload[4]&0x00FF));
-		} else if(packet_id == COMM_GET_DECODED_CHUK){
-			//if(button_type == BTN_UART_C){
-				rec_chuck_struct.bt_c = ((((vesc_revieve_packet.payload[1] & 0x000000FF) << 24)|((vesc_revieve_packet.payload[2] & 0x000000FF) << 16)|((vesc_revieve_packet.payload[3] & 0x000000FF) << 8)|(vesc_revieve_packet.payload[4] & 0x000000FF)) == 0xFFF0DC45); //-992187
-				rec_chuck_struct.bt_z = rec_chuck_struct.bt_c;
-			//}
-			//rec_chuck_struct.js_x = vesc_revieve_packet.payload[1];
-			//remote_y = vesc_revieve_packet.payload[2];
-			//rec_chuck_struct.bt_c = vesc_revieve_packet.payload[3];
-			//rec_chuck_struct.bt_z = vesc_revieve_packet.payload[4];
-			//rec_chuck_struct.acc_x = (int16_t)(((vesc_revieve_packet.payload[5] & 0x00FF) << 8)|(vesc_revieve_packet.payload[6] & 0x00FF));
-			//rec_chuck_struct.acc_y = (int16_t)(((vesc_revieve_packet.payload[7] & 0x00FF) << 8)|(vesc_revieve_packet.payload[8] & 0x00FF));
-			//rec_chuck_struct.acc_z = (int16_t)(((vesc_revieve_packet.payload[9] & 0x00FF) << 8)|(vesc_revieve_packet.payload[10] & 0x00FF));
-		} else if(packet_id == COMM_GET_VALUES_SELECTIVE){ // Only available in latest Official FW
-			latest_vesc_vals.temp_fet_filtered = (vesc_revieve_packet.payload[5] << 8) | vesc_revieve_packet.payload[6];
-			latest_vesc_vals.avg_motor_current = (vesc_revieve_packet.payload[7] << 24) | (vesc_revieve_packet.payload[8] << 16) | (vesc_revieve_packet.payload[9] << 8) | vesc_revieve_packet.payload[10];
-			latest_vesc_vals.avg_input_current = (vesc_revieve_packet.payload[11] << 24) | (vesc_revieve_packet.payload[12] << 16) | (vesc_revieve_packet.payload[13] << 8) | vesc_revieve_packet.payload[14];
-			latest_vesc_vals.duty_cycle = (vesc_revieve_packet.payload[15] << 8) | vesc_revieve_packet.payload[16];
-			latest_vesc_vals.rpm = (vesc_revieve_packet.payload[17] << 24) | (vesc_revieve_packet.payload[18] << 16) | (vesc_revieve_packet.payload[19] << 8) | vesc_revieve_packet.payload[20];
-			latest_vesc_vals.INPUT_VOLTAGE = (vesc_revieve_packet.payload[21] << 8) | vesc_revieve_packet.payload[22];
-			latest_vesc_vals.amp_hours = ((vesc_revieve_packet.payload[23] << 24) | (vesc_revieve_packet.payload[24] << 16) | (vesc_revieve_packet.payload[25] << 8) | vesc_revieve_packet.payload[26])*10;
-			latest_vesc_vals.amp_hours_charged = ((vesc_revieve_packet.payload[27] << 24) | (vesc_revieve_packet.payload[28] << 16) | (vesc_revieve_packet.payload[29] << 8) | vesc_revieve_packet.payload[30])*10;
-			latest_vesc_vals.watt_hours = ((vesc_revieve_packet.payload[31] << 24) | (vesc_revieve_packet.payload[32] << 16) | (vesc_revieve_packet.payload[33] << 8) | vesc_revieve_packet.payload[34])/100;
-			latest_vesc_vals.watt_hours_charged = ((vesc_revieve_packet.payload[35] << 24) | (vesc_revieve_packet.payload[36] << 16) | (vesc_revieve_packet.payload[37] << 8) | vesc_revieve_packet.payload[38])/100;
-			latest_vesc_vals.tachometer_value = (vesc_revieve_packet.payload[39] << 24) | (vesc_revieve_packet.payload[40] << 16) | (vesc_revieve_packet.payload[41] << 8) | vesc_revieve_packet.payload[42];
-			latest_vesc_vals.fault = vesc_revieve_packet.payload[43];
-		} else if(packet_id == COMM_GET_IMU_DATA){ 
-			// TODO
-	}
+	uint8_t packet_id = vesc_revieve_packet.payload[0];
+	if(packet_id == COMM_FW_VERSION){ // Bytes are the same for all FW's
+		latest_vesc_vals.FW_VERSION_MAJOR = (uint16_t)vesc_revieve_packet.payload[1];
+		latest_vesc_vals.FW_VERSION_MINOR = (uint16_t)vesc_revieve_packet.payload[2];
+	} else if(packet_id == COMM_GET_VALUES){
+		latest_vesc_vals.temp_fet_filtered = (vesc_revieve_packet.payload[GET_VALUES_FET_TEMP] << 8) | vesc_revieve_packet.payload[GET_VALUES_FET_TEMP+1];
+		latest_vesc_vals.avg_motor_current = (vesc_revieve_packet.payload[GET_VALUES_MTR_CURR] << 24) | (vesc_revieve_packet.payload[GET_VALUES_MTR_CURR+1] << 16) | (vesc_revieve_packet.payload[GET_VALUES_MTR_CURR+2] << 8) | vesc_revieve_packet.payload[GET_VALUES_MTR_CURR+3];
+		latest_vesc_vals.avg_input_current = (vesc_revieve_packet.payload[GET_VALUES_IN_CURR] << 24) | (vesc_revieve_packet.payload[GET_VALUES_IN_CURR+1] << 16) | (vesc_revieve_packet.payload[GET_VALUES_IN_CURR+2] << 8) | vesc_revieve_packet.payload[GET_VALUES_IN_CURR+3];
+		latest_vesc_vals.duty_cycle = (vesc_revieve_packet.payload[GET_VALUES_DUTY] << 8) | vesc_revieve_packet.payload[GET_VALUES_DUTY+1];
+		latest_vesc_vals.rpm = (vesc_revieve_packet.payload[GET_VALUES_RPM] << 24) | (vesc_revieve_packet.payload[GET_VALUES_RPM+1] << 16) | (vesc_revieve_packet.payload[GET_VALUES_RPM+2] << 8) | vesc_revieve_packet.payload[GET_VALUES_RPM+3];
+		latest_vesc_vals.INPUT_VOLTAGE = (vesc_revieve_packet.payload[GET_VALUES_IN_VOLT] << 8) | vesc_revieve_packet.payload[GET_VALUES_IN_VOLT+1];
+		latest_vesc_vals.amp_hours = ((vesc_revieve_packet.payload[GET_VALUES_AH_USED] << 24) | (vesc_revieve_packet.payload[GET_VALUES_AH_USED+1] << 16) | (vesc_revieve_packet.payload[GET_VALUES_AH_USED+2] << 8) | vesc_revieve_packet.payload[GET_VALUES_AH_USED+3])/100;
+		latest_vesc_vals.amp_hours_charged = ((vesc_revieve_packet.payload[GET_VALUES_AH_CHRG] << 24) | (vesc_revieve_packet.payload[GET_VALUES_AH_CHRG+1] << 16) | (vesc_revieve_packet.payload[GET_VALUES_AH_CHRG+2] << 8) | vesc_revieve_packet.payload[GET_VALUES_AH_CHRG+3])/100;
+		latest_vesc_vals.watt_hours = ((vesc_revieve_packet.payload[GET_VALUES_WH_USED] << 24) | (vesc_revieve_packet.payload[GET_VALUES_WH_USED+1] << 16) | (vesc_revieve_packet.payload[GET_VALUES_WH_USED+2] << 8) | vesc_revieve_packet.payload[GET_VALUES_WH_USED+3])/100;
+		latest_vesc_vals.watt_hours_charged = ((vesc_revieve_packet.payload[GET_VALUES_WH_CHRG] << 24) | (vesc_revieve_packet.payload[GET_VALUES_WH_CHRG+1] << 16) | (vesc_revieve_packet.payload[GET_VALUES_WH_CHRG+2] << 8) | vesc_revieve_packet.payload[GET_VALUES_WH_CHRG+3])/100;
+		latest_vesc_vals.tachometer_value = (vesc_revieve_packet.payload[GET_VALUES_TACH] << 24) | (vesc_revieve_packet.payload[GET_VALUES_TACH+1] << 16) | (vesc_revieve_packet.payload[GET_VALUES_TACH+2] << 8) | vesc_revieve_packet.payload[GET_VALUES_TACH+2];
+		latest_vesc_vals.fault = vesc_revieve_packet.payload[GET_VALUES_FAULT];
+	} else if(packet_id == COMM_GET_MCCONF){
+	//port_pin_set_output_level(STAT_LED,true);
+		if(esc_fw == FW_3v6){
+			mcconf_limits.motor_current_max = ((vesc_revieve_packet.payload[GET_MCCONF_MTR_CURR_MAX] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_MTR_CURR_MAX+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_MTR_CURR_MAX+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_MTR_CURR_MAX+3])/1000;
+			mcconf_limits.motor_current_min = ((vesc_revieve_packet.payload[GET_MCCONF_MTR_CURR_MIN] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_MTR_CURR_MIN+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_MTR_CURR_MIN+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_MTR_CURR_MIN+3])/1000;
+			mcconf_limits.input_current_max = ((vesc_revieve_packet.payload[GET_MCCONF_IN_CURR_MAX] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_IN_CURR_MAX+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_IN_CURR_MAX+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_IN_CURR_MAX+3])/1000;
+			mcconf_limits.input_current_min = ((vesc_revieve_packet.payload[GET_MCCONF_IN_CURR_MIN] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_IN_CURR_MIN+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_IN_CURR_MIN+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_IN_CURR_MIN+3])/1000;
+			mcconf_limits.abs_current_max = ((vesc_revieve_packet.payload[GET_MCCONF_ABS_CURR_MAX] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_ABS_CURR_MAX+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_ABS_CURR_MAX+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_ABS_CURR_MAX+3])/1000;
+			mcconf_limits.min_erpm = ((vesc_revieve_packet.payload[GET_MCCONF_ERPM_MIN] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_ERPM_MIN+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_ERPM_MIN+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_ERPM_MIN+3])/1000;
+			mcconf_limits.max_erpm = ((vesc_revieve_packet.payload[GET_MCCONF_ERPM_MAX] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_ERPM_MAX+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_ERPM_MAX+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_ERPM_MAX+3])/1000;
+			mcconf_limits.max_erpm_fbrake = ((vesc_revieve_packet.payload[GET_MCCONF_ERPM_FBRAKE_MAX] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_ERPM_FBRAKE_MAX+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_ERPM_FBRAKE_MAX+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_ERPM_FBRAKE_MAX+3])/1000;
+			mcconf_limits.max_erpm_fbrake_cc = ((vesc_revieve_packet.payload[GET_MCCONF_ERPM_FBRAKE_CC_MAX] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_ERPM_FBRAKE_CC_MAX+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_ERPM_FBRAKE_CC_MAX+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_ERPM_FBRAKE_CC_MAX+3])/1000;
+			mcconf_limits.min_vin = ((vesc_revieve_packet.payload[GET_MCCONF_VIN_MIN] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_VIN_MIN+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_VIN_MIN+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_VIN_MIN+3])/1000;
+			mcconf_limits.max_vin = ((vesc_revieve_packet.payload[GET_MCCONF_VIN_MAX] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_VIN_MAX+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_VIN_MAX+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_VIN_MAX+3])/1000;
+			mcconf_limits.battery_cut_start = ((vesc_revieve_packet.payload[GET_MCCONF_BAT_CUT_STRT] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_BAT_CUT_STRT+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_BAT_CUT_STRT+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_BAT_CUT_STRT+3])/1000;
+			mcconf_limits.battery_cut_end = ((vesc_revieve_packet.payload[GET_MCCONF_BAT_CUT_END] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_BAT_CUT_END+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_BAT_CUT_END+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_BAT_CUT_END+3])/1000;
+			mcconf_limits.temp_fet_start = ((vesc_revieve_packet.payload[GET_MCCONF_TMP_FET_STRT] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_TMP_FET_STRT+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_TMP_FET_STRT+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_TMP_FET_STRT+3])/1000;
+			mcconf_limits.temp_fet_end = ((vesc_revieve_packet.payload[GET_MCCONF_TMP_FET_END] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_TMP_FET_END+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_TMP_FET_END+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_TMP_FET_END+3])/1000;
+			mcconf_limits.temp_motor_start = ((vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_STRT] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_STRT+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_STRT+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_STRT+2])/1000;
+			mcconf_limits.temp_motor_end = ((vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_END] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_END+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_END+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_END+3])/1000;
+			mcconf_limits.min_duty = ((vesc_revieve_packet.payload[GET_MCCONF_DUTY_MIN] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_DUTY_MIN+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_DUTY_MIN+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_DUTY_MIN+3])/1000;
+			mcconf_limits.max_duty = ((vesc_revieve_packet.payload[GET_MCCONF_DUTY_MAX] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_DUTY_MAX+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_DUTY_MAX+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_DUTY_MAX+3])/1000;
+		} else if (esc_fw == FW_3v7 || esc_fw == FW_UNITY || esc_fw == FW_ACKMANIAC){
+			mcconf_limits.motor_current_max = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_MTR_CURR_MAX);
+			mcconf_limits.motor_current_min = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_MTR_CURR_MIN);
+			mcconf_limits.input_current_max = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_IN_CURR_MAX);
+			mcconf_limits.input_current_min = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_IN_CURR_MIN);
+			mcconf_limits.abs_current_max = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_ABS_CURR_MAX);
+			mcconf_limits.min_erpm = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_ERPM_MIN);
+			mcconf_limits.max_erpm = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_ERPM_MAX);
+			mcconf_limits.max_erpm_fbrake = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_ERPM_FBRAKE_MAX);
+			mcconf_limits.max_erpm_fbrake_cc = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_ERPM_FBRAKE_CC_MAX);
+			mcconf_limits.min_vin = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_VIN_MIN);
+			mcconf_limits.max_vin = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_VIN_MAX);
+			mcconf_limits.battery_cut_start = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_BAT_CUT_STRT);
+			mcconf_limits.battery_cut_end = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_BAT_CUT_END);
+			mcconf_limits.temp_fet_start = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_TMP_FET_STRT);
+			mcconf_limits.temp_fet_end = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_TMP_FET_END);
+			mcconf_limits.temp_motor_start = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_TMP_MTR_STRT);
+			mcconf_limits.temp_motor_end = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_TMP_MTR_END);
+			mcconf_limits.min_duty = (buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_DUTY_MIN)*100);
+			mcconf_limits.max_duty = (buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_DUTY_MAX)*100);
+		}
+		//if(GET_LIMITS)
+		SEND_LIMITS = 1;
+		GET_LIMITS = 0;
+	} else if(packet_id == COMM_GET_DECODED_PPM){
+		latest_vesc_vals.pwm_val = (int32_t)(((vesc_revieve_packet.payload[1]&0x00FF)<<24)|((vesc_revieve_packet.payload[2]&0x00FF)<<16)|((vesc_revieve_packet.payload[3]&0x00FF)<<8)|(vesc_revieve_packet.payload[4]&0x00FF));
+	} else if(packet_id == COMM_GET_DECODED_CHUK){
+		//if(button_type == BTN_UART_C){
+			rec_chuck_struct.bt_c = ((((vesc_revieve_packet.payload[1] & 0x000000FF) << 24)|((vesc_revieve_packet.payload[2] & 0x000000FF) << 16)|((vesc_revieve_packet.payload[3] & 0x000000FF) << 8)|(vesc_revieve_packet.payload[4] & 0x000000FF)) == 0xFFF0DC45); //-992187
+			rec_chuck_struct.bt_z = rec_chuck_struct.bt_c;
+		//}
+		//rec_chuck_struct.js_x = vesc_revieve_packet.payload[1];
+		//remote_y = vesc_revieve_packet.payload[2];
+		//rec_chuck_struct.bt_c = vesc_revieve_packet.payload[3];
+		//rec_chuck_struct.bt_z = vesc_revieve_packet.payload[4];
+		//rec_chuck_struct.acc_x = (int16_t)(((vesc_revieve_packet.payload[5] & 0x00FF) << 8)|(vesc_revieve_packet.payload[6] & 0x00FF));
+		//rec_chuck_struct.acc_y = (int16_t)(((vesc_revieve_packet.payload[7] & 0x00FF) << 8)|(vesc_revieve_packet.payload[8] & 0x00FF));
+		//rec_chuck_struct.acc_z = (int16_t)(((vesc_revieve_packet.payload[9] & 0x00FF) << 8)|(vesc_revieve_packet.payload[10] & 0x00FF));
+	}/* else if(packet_id == COMM_GET_VALUES_SELECTIVE){ // Only available in latest Official FW
+		latest_vesc_vals.temp_fet_filtered = (vesc_revieve_packet.payload[5] << 8) | vesc_revieve_packet.payload[6];
+		latest_vesc_vals.avg_motor_current = (vesc_revieve_packet.payload[7] << 24) | (vesc_revieve_packet.payload[8] << 16) | (vesc_revieve_packet.payload[9] << 8) | vesc_revieve_packet.payload[10];
+		latest_vesc_vals.avg_input_current = (vesc_revieve_packet.payload[11] << 24) | (vesc_revieve_packet.payload[12] << 16) | (vesc_revieve_packet.payload[13] << 8) | vesc_revieve_packet.payload[14];
+		latest_vesc_vals.duty_cycle = (vesc_revieve_packet.payload[15] << 8) | vesc_revieve_packet.payload[16];
+		latest_vesc_vals.rpm = (vesc_revieve_packet.payload[17] << 24) | (vesc_revieve_packet.payload[18] << 16) | (vesc_revieve_packet.payload[19] << 8) | vesc_revieve_packet.payload[20];
+		latest_vesc_vals.INPUT_VOLTAGE = (vesc_revieve_packet.payload[21] << 8) | vesc_revieve_packet.payload[22];
+		latest_vesc_vals.amp_hours = ((vesc_revieve_packet.payload[23] << 24) | (vesc_revieve_packet.payload[24] << 16) | (vesc_revieve_packet.payload[25] << 8) | vesc_revieve_packet.payload[26])*10;
+		latest_vesc_vals.amp_hours_charged = ((vesc_revieve_packet.payload[27] << 24) | (vesc_revieve_packet.payload[28] << 16) | (vesc_revieve_packet.payload[29] << 8) | vesc_revieve_packet.payload[30])*10;
+		latest_vesc_vals.watt_hours = ((vesc_revieve_packet.payload[31] << 24) | (vesc_revieve_packet.payload[32] << 16) | (vesc_revieve_packet.payload[33] << 8) | vesc_revieve_packet.payload[34])/100;
+		latest_vesc_vals.watt_hours_charged = ((vesc_revieve_packet.payload[35] << 24) | (vesc_revieve_packet.payload[36] << 16) | (vesc_revieve_packet.payload[37] << 8) | vesc_revieve_packet.payload[38])/100;
+		latest_vesc_vals.tachometer_value = (vesc_revieve_packet.payload[39] << 24) | (vesc_revieve_packet.payload[40] << 16) | (vesc_revieve_packet.payload[41] << 8) | vesc_revieve_packet.payload[42];
+		latest_vesc_vals.fault = vesc_revieve_packet.payload[43];
+	} else if(packet_id == COMM_GET_IMU_DATA){ 
+		// TODO
+	}*/
 }
 
 float buffer_get_float32_auto(uint8_t *buffer, int8_t index) {
@@ -358,7 +359,7 @@ void vesc_get_vals(){
 	struct uart_packet send_pack;
 	
 	send_pack.start = 0x02;
-	if(latest_vesc_vals.FW_VERSION_MINOR >= 48 && latest_vesc_vals.FW_VERSION_MINOR < 100){
+	/*if(latest_vesc_vals.FW_VERSION_MINOR >= 48 && latest_vesc_vals.FW_VERSION_MINOR < 100){
 		send_pack.len[0] = 0x05;
 		send_pack.payload[0] = COMM_GET_VALUES_SELECTIVE;
 		int32_t mask = (uint32_t)0b0001011111111001101;
@@ -369,13 +370,13 @@ void vesc_get_vals(){
 		uint16_t crc = crc16(send_pack.payload, 5);
 		send_pack.crc[0] = (uint8_t)((crc&0xFF00)>>8);
 		send_pack.crc[1] = (uint8_t)(crc&0x00FF);
-	} else {
+	} else {*/
 		send_pack.len[0] = 0x01;
 		send_pack.payload[0] = COMM_GET_VALUES;
 		uint16_t crc = crc16(send_pack.payload, 1);
 		send_pack.crc[0] = (uint8_t)((crc&0xFF00)>>8);
 		send_pack.crc[1] = (uint8_t)(crc&0x00FF);
-	}
+	//}
 
 	send_packet(send_pack);
 }
@@ -464,7 +465,7 @@ void vesc_get_imu(){
 
 	send_pack.start = 0x02;
 	send_pack.len[0] = 0x01;
-	send_pack.payload[0] = COMM_GET_IMU_DATA;
+	//send_pack.payload[0] = COMM_GET_IMU_DATA;
 	uint16_t crc = crc16(send_pack.payload, 1);
 	send_pack.crc[0] = (uint8_t)((crc&0xFF00)>>8);
 	send_pack.crc[1] = (uint8_t)(crc&0x00FF);
@@ -534,8 +535,20 @@ void detect_vesc_firmware(){
 		ESC_FW_READ = true;
 
 		// Define the location in which particular values can be found in COMM messages used by each FW
-		if(latest_vesc_vals.FW_VERSION_MAJOR == 2 && latest_vesc_vals.FW_VERSION_MINOR <= 18){ // <= v2.18
-			esc_fw = FW_2v18;
+		if((latest_vesc_vals.FW_VERSION_MAJOR == 2 && latest_vesc_vals.FW_VERSION_MINOR <= 18)||
+			(latest_vesc_vals.FW_VERSION_MAJOR == 3 && latest_vesc_vals.FW_VERSION_MINOR <= 6)){ // <= v2.18 || < 3.7
+			esc_fw = FW_3v6;
+		} else if((latest_vesc_vals.FW_VERSION_MAJOR == 3 && latest_vesc_vals.FW_VERSION_MINOR >= 7 && latest_vesc_vals.FW_VERSION_MINOR <= 67)||
+				(latest_vesc_vals.FW_VERSION_MAJOR == 4 && latest_vesc_vals.FW_VERSION_MINOR >= 0 && latest_vesc_vals.FW_VERSION_MINOR <= 2)||
+				(latest_vesc_vals.FW_VERSION_MAJOR == 5 && latest_vesc_vals.FW_VERSION_MINOR >= 0 && latest_vesc_vals.FW_VERSION_MINOR <= 1)){ // >= 3.7 && <= 5.1
+			esc_fw = FW_3v7;
+		} else if(latest_vesc_vals.FW_VERSION_MAJOR == 23){ // Unity
+			esc_fw = FW_UNITY;
+		} else if(latest_vesc_vals.FW_VERSION_MAJOR == 3 && latest_vesc_vals.FW_VERSION_MINOR >= 100){ // Ackmaniac
+			esc_fw = FW_ACKMANIAC;
+		}
+
+		if(esc_fw == FW_3v6){ // <= v3.6
 			COMM_FW_VERSION = 0;
 			COMM_GET_VALUES = 4;
 			COMM_GET_MCCONF = 13;
@@ -543,9 +556,7 @@ void detect_vesc_firmware(){
 			COMM_GET_DECODED_PPM = 30;
 			COMM_GET_DECODED_CHUK = 32;
 			COMM_SET_CHUCK_DATA = 34;
-			COMM_GET_VALUES_SELECTIVE = 255;
-			COMM_GET_IMU_DATA = 255;
-
+			
 			GET_VALUES_FET_TEMP = 1;
 			GET_VALUES_MTR_CURR = 15;
 			GET_VALUES_IN_CURR = 19;
@@ -558,7 +569,7 @@ void detect_vesc_firmware(){
 			GET_VALUES_WH_CHRG = 43;
 			GET_VALUES_TACH = 47;
 			GET_VALUES_FAULT = 55;
-
+			
 			GET_MCCONF_MTR_CURR_MAX = 5;
 			GET_MCCONF_MTR_CURR_MIN = 9;
 			GET_MCCONF_IN_CURR_MAX = 13;
@@ -578,8 +589,8 @@ void detect_vesc_firmware(){
 			GET_MCCONF_TMP_MTR_END = 71;
 			GET_MCCONF_DUTY_MIN = 75;
 			GET_MCCONF_DUTY_MAX = 79;
-		} else if(latest_vesc_vals.FW_VERSION_MAJOR == 3 && latest_vesc_vals.FW_VERSION_MINOR < 100){ // >= 3.0
-			esc_fw = FW_3v00;
+		}
+		if(esc_fw == FW_3v7 || esc_fw == FW_UNITY || esc_fw == FW_ACKMANIAC){ // >= 3.7 && <= 5.1 || AckManiac || Unity
 			COMM_FW_VERSION = 0;
 			COMM_GET_VALUES = 4;
 			COMM_GET_MCCONF = 14;
@@ -587,109 +598,6 @@ void detect_vesc_firmware(){
 			COMM_GET_DECODED_PPM = 31;
 			COMM_GET_DECODED_CHUK = 33;
 			COMM_SET_CHUCK_DATA = 35;
-			COMM_GET_VALUES_SELECTIVE = 50;
-			COMM_GET_IMU_DATA = 65;
-
-			GET_VALUES_FET_TEMP = 1;
-			GET_VALUES_MTR_CURR = 5;
-			GET_VALUES_IN_CURR = 9;
-			GET_VALUES_DUTY = 21;
-			GET_VALUES_RPM = 23;
-			GET_VALUES_IN_VOLT = 27;
-			GET_VALUES_AH_USED = 29;
-			GET_VALUES_AH_CHRG = 33;
-			GET_VALUES_WH_USED = 37;
-			GET_VALUES_WH_CHRG = 41;
-			GET_VALUES_TACH = 45;
-			GET_VALUES_FAULT = 53;
-
-			GET_MCCONF_MTR_CURR_MAX = 5;
-			GET_MCCONF_MTR_CURR_MIN = 9;
-			GET_MCCONF_IN_CURR_MAX = 13;
-			GET_MCCONF_IN_CURR_MIN = 17;
-			GET_MCCONF_ABS_CURR_MAX = 21;
-			GET_MCCONF_ERPM_MIN = 25;
-			GET_MCCONF_ERPM_MAX = 29;
-			GET_MCCONF_ERPM_FBRAKE_MAX = 37;
-			GET_MCCONF_ERPM_FBRAKE_CC_MAX = 41;
-			GET_MCCONF_VIN_MIN = 45;
-			GET_MCCONF_VIN_MAX = 49;
-			GET_MCCONF_BAT_CUT_STRT = 53;
-			GET_MCCONF_BAT_CUT_END = 57;
-			GET_MCCONF_TMP_FET_STRT = 62;
-			GET_MCCONF_TMP_FET_END = 66;
-			GET_MCCONF_TMP_MTR_STRT = 70;
-			GET_MCCONF_TMP_MTR_END = 74;
-			GET_MCCONF_DUTY_MIN = 82;
-			GET_MCCONF_DUTY_MAX = 86;
-		} else if(latest_vesc_vals.FW_VERSION_MAJOR == 23){ // Unity
-			esc_fw = FW_UNITY;
-			COMM_FW_VERSION = 0;
-			COMM_GET_VALUES = 4; // May use COMM_GET_UNITY_VALUES = 38
-			COMM_GET_MCCONF = 14;
-			COMM_ALIVE = 30;
-			COMM_GET_DECODED_PPM = 31;
-			COMM_GET_DECODED_CHUK = 33;
-			COMM_SET_CHUCK_DATA = 35;
-			COMM_GET_VALUES_SELECTIVE = 255;
-			COMM_GET_IMU_DATA = 255;
-
-			GET_VALUES_FET_TEMP = 1;
-			GET_VALUES_MTR_CURR = 9;
-			GET_VALUES_IN_CURR = 17;
-			GET_VALUES_DUTY = 37;
-			GET_VALUES_RPM = 41;
-			GET_VALUES_IN_VOLT = 49;
-			GET_VALUES_AH_USED = 51;
-			GET_VALUES_AH_CHRG = 55;
-			GET_VALUES_WH_USED = 59;
-			GET_VALUES_WH_CHRG = 63;
-			GET_VALUES_TACH = 67;
-			GET_VALUES_FAULT = 83;
-
-			GET_MCCONF_MTR_CURR_MAX = 9;
-			GET_MCCONF_MTR_CURR_MIN = 13;
-			GET_MCCONF_IN_CURR_MAX = 17;
-			GET_MCCONF_IN_CURR_MIN = 21;
-			GET_MCCONF_ABS_CURR_MAX = 25;
-			GET_MCCONF_ERPM_MIN = 29;
-			GET_MCCONF_ERPM_MAX = 33;
-			GET_MCCONF_ERPM_FBRAKE_MAX = 41;
-			GET_MCCONF_ERPM_FBRAKE_CC_MAX = 45;
-			GET_MCCONF_VIN_MIN = 49;
-			GET_MCCONF_VIN_MAX = 53;
-			GET_MCCONF_BAT_CUT_STRT = 57;
-			GET_MCCONF_BAT_CUT_END = 61;
-			GET_MCCONF_TMP_FET_STRT = 66;
-			GET_MCCONF_TMP_FET_END = 70;
-			GET_MCCONF_TMP_MTR_STRT = 74;
-			GET_MCCONF_TMP_MTR_END = 78;
-			GET_MCCONF_DUTY_MIN = 86;
-			GET_MCCONF_DUTY_MAX = 90;
-		} else if(latest_vesc_vals.FW_VERSION_MAJOR == 3 && latest_vesc_vals.FW_VERSION_MINOR >= 100){ // Ackmaniac
-			esc_fw = FW_ACKMANIAC;
-			COMM_FW_VERSION = 0;
-			COMM_GET_VALUES = 4;
-			COMM_GET_MCCONF = 14;
-			COMM_ALIVE = 30;
-			COMM_GET_DECODED_PPM = 31;
-			COMM_GET_DECODED_CHUK = 33;
-			COMM_SET_CHUCK_DATA = 35;
-			COMM_GET_VALUES_SELECTIVE = 255;
-			COMM_GET_IMU_DATA = 255;
-
-			GET_VALUES_FET_TEMP = 1;
-			GET_VALUES_MTR_CURR = 5;
-			GET_VALUES_IN_CURR = 9;
-			GET_VALUES_DUTY = 21;
-			GET_VALUES_RPM = 23;
-			GET_VALUES_IN_VOLT = 27;
-			GET_VALUES_AH_USED = 29;
-			GET_VALUES_AH_CHRG = 33;
-			GET_VALUES_WH_USED = 37;
-			GET_VALUES_WH_CHRG = 41;
-			GET_VALUES_TACH = 45;
-			GET_VALUES_FAULT = 53;
 
 			GET_MCCONF_MTR_CURR_MAX = 5;
 			GET_MCCONF_MTR_CURR_MIN = 9;
@@ -711,6 +619,36 @@ void detect_vesc_firmware(){
 			GET_MCCONF_DUTY_MIN = 82;
 			GET_MCCONF_DUTY_MAX = 86;
 		}
+		
+		if(esc_fw == FW_3v7 || esc_fw == FW_ACKMANIAC){ // >= 3.7 && <= 5.1 || AckManiac
+			GET_VALUES_FET_TEMP = 1;
+			GET_VALUES_MTR_CURR = 5;
+			GET_VALUES_IN_CURR = 9;
+			GET_VALUES_DUTY = 21;
+			GET_VALUES_RPM = 23;
+			GET_VALUES_IN_VOLT = 27;
+			GET_VALUES_AH_USED = 29;
+			GET_VALUES_AH_CHRG = 33;
+			GET_VALUES_WH_USED = 37;
+			GET_VALUES_WH_CHRG = 41;
+			GET_VALUES_TACH = 45;
+			GET_VALUES_FAULT = 53;
+		}
+		
+		if(esc_fw == FW_UNITY){ // Unity
+			GET_VALUES_FET_TEMP = 1;
+			GET_VALUES_MTR_CURR = 9;
+			GET_VALUES_IN_CURR = 17;
+			GET_VALUES_DUTY = 37;
+			GET_VALUES_RPM = 41;
+			GET_VALUES_IN_VOLT = 49;
+			GET_VALUES_AH_USED = 51;
+			GET_VALUES_AH_CHRG = 55;
+			GET_VALUES_WH_USED = 59;
+			GET_VALUES_WH_CHRG = 63;
+			GET_VALUES_TACH = 67;
+			GET_VALUES_FAULT = 83;
+		}
 	}
 }
 
@@ -720,7 +658,6 @@ inline bool CHECK_BUFFER(uint8_t *buf){
 
 void read_vesc_packet(void){
 	if(CHECK_BUFFER(vesc_USART_read_buffer)){
-		//ERROR_LEDs(0);
 		VESC_PACKET_RECIEVED = true;
 
 		if(vesc_USART_read_buffer[0] == 0x2){
@@ -750,7 +687,7 @@ void read_vesc_packet(void){
 		usart_abort_job(&vesc_usart, USART_TRANSCEIVER_RX);
 		// Start listening to the ESC UART
 		usart_read_buffer_job(&vesc_usart, vesc_USART_read_buffer, MAX_PAYLOAD_LEN+6);
-	} else if(CHECK_FOR_NOISE(&vesc_usart, vesc_USART_read_buffer, MAX_PAYLOAD_LEN+6)){
+	} else if(CHECK_FOR_NOISE(&vesc_usart, vesc_USART_read_buffer, MAX_PAYLOAD_LEN+6, &ESC_noise_timer)){
 		//Stop listening to the BLE UART
 		usart_abort_job(&vesc_usart, USART_TRANSCEIVER_RX);
 		memset(vesc_USART_read_buffer, 0, MAX_PAYLOAD_LEN+6);
@@ -825,7 +762,18 @@ detect_esc_baud_pins(void){
 	}
 }
 
-bool CHECK_FOR_NOISE(struct usart_module *const module, uint8_t buf[MAX_PAYLOAD_LEN+6], uint16_t max_size){
-	return (buf[0] != 0x02 && buf[0] != 0x03 && buf[0] != 0xA5 && module->remaining_rx_buffer_length != max_size);
+bool CHECK_FOR_NOISE(struct usart_module *const module, uint8_t buf[MAX_PAYLOAD_LEN+6], uint16_t max_size, uint32_t *noise_timer){
+	if(buf[0] != 0x02 && buf[0] != 0x03 && buf[0] != 0xA5 && module->remaining_rx_buffer_length != max_size){
+		return true;
+	}else if(buf[0] == 0x02 || buf[0] == 0x03 || buf[0] == 0xA5){
+		if((millis() - *noise_timer) > 500){
+			return true;
+		}else{
+			return false;
+		}
+	}else{
+		*noise_timer = millis();
+		return false;
+	}
 }
 #endif /* CRC_H_ */

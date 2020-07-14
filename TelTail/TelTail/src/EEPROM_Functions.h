@@ -336,7 +336,7 @@ void save_orientation_controls_remote_esc_lights()
 	eeprom_data[21] = (RGB_led_type << 4) | brake_light_mode;
 	eeprom_data[22] = deadzone;
 	eeprom_data[23] = led_num;
-	eeprom_data[24] = (SYNC_RGB << 7) | (BRAKE_ALWAYS_ON << 6);
+	eeprom_data[24] = (SYNC_RGB << 7) | (BRAKE_ALWAYS_ON << 6) | (DEFAULT_STATE << 5);
 
 	//Write EEPROM data
 	eeprom_emulator_write_page(3, eeprom_data);
@@ -373,9 +373,9 @@ void restore_orientation_controls_remote_esc_lights()
 		deadzone = 10;
 		button_type = 1;
 
-		esc_fw = FW_3v00; // Set 3.0 as the default FW to prevent bricking any ESCs
-		esc_comms = 2;
-		UART_baud = 3;
+		esc_fw = FW_3v7; // Set v3.7-v5.1 as the default FW to prevent bricking any ESCs
+		esc_comms = COMMS_UART;
+		UART_baud = BAUD_9600;
 
 		RGB_led_type = RGB_ANALOG;
 		brake_light_mode = BRAKE_FADE;
@@ -383,6 +383,7 @@ void restore_orientation_controls_remote_esc_lights()
 		led_num = 30;
 		SYNC_RGB = true;
 		BRAKE_ALWAYS_ON = false;
+		DEFAULT_STATE = false;
 
 		save_orientation_controls_remote_esc_lights();
 	}
@@ -421,6 +422,7 @@ void restore_orientation_controls_remote_esc_lights()
 		led_num = eeprom_data[23];
 		SYNC_RGB = ((eeprom_data[24]&0x80)>>7);
 		BRAKE_ALWAYS_ON = ((eeprom_data[24]&0x40)>>6);
+		DEFAULT_STATE = ((eeprom_data[24]&0x20)>>5);
 	}
 }
 

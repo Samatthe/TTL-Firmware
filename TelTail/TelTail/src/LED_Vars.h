@@ -150,6 +150,7 @@ bool SUPRESS_RIGHT_RGB = false;
 bool SYNC_RGB = true;
 bool BRAKE_ALWAYS_ON = true;
 uint8_t brake_light_mode = BRAKE_FADE;
+bool DEFAULT_STATE = false;
 
 // Bools
 uint8_t HEADLIGHTS = 0; // head/tail light enable bool
@@ -188,7 +189,7 @@ bool DIGITAL_OFF = false;
 
 uint8_t led_num = 30;
 uint8_t current_led_num = 0;
-uint8_t digital_refresh_rate = 10; //Hz
+uint8_t digital_refresh_rate = 50; //Hz
 uint32_t digital_refresh_time = 0;
 
 #define L_GND PIN_PA07

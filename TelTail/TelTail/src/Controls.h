@@ -348,18 +348,22 @@ void HandleUserInput()
 	//////////////////////   Handle the aux output   /////////////////////
 	//////////////////////////////////////////////////////////////////////
 	if(AUX_ENABLED){
-		if(!AppAuxButton){
+		if(AppAuxButton == 1 && lAppAuxButton == 0) {
+			 AUX_OUTPUT = true;
+		} else if(AppAuxButton == 0 && lAppAuxButton == 1){
+			 AUX_OUTPUT = false;
+		} else {
 			switch(auxControlType){
 				case AUX_MOMENTARY:
-				if(ButtonHeldTime > 500){
+				if(ButtonHeldTime > 500 && (single_aux_control != PRESS_NONE ||  dual_aux_control != PRESS_NONE)){
 					AUX_OUTPUT = true;
-					} else {
+				} else {
 					AUX_OUTPUT = false;
 				}
 				break;
 				case AUX_TOGGLED:
-				if((remote_type != REMOTE_UART_DUAL && single_aux_control == ButtonPressType)
-				|| (remote_type == REMOTE_UART_DUAL && dual_aux_control == ButtonPressType)) {
+				if((remote_type != REMOTE_UART_DUAL && single_aux_control == ButtonPressType  && single_aux_control != PRESS_NONE)
+				|| (remote_type == REMOTE_UART_DUAL && dual_aux_control == ButtonPressType && dual_aux_control != PRESS_NONE)) {
 					AUX_OUTPUT = !AUX_OUTPUT;
 				}
 				break;
@@ -377,10 +381,6 @@ void HandleUserInput()
 				case AUX_PATTERN:
 				break;
 			}
-		} else if(AppAuxButton == 1 && lAppAuxButton == 0) {
-			AUX_OUTPUT = true;
-		} else if(AppAuxButton == 0 && lAppAuxButton == 1){
-			AUX_OUTPUT = false;
 		}
 		lAppAuxButton = AppAuxButton;
 

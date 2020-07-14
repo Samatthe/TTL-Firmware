@@ -254,25 +254,62 @@ void ERROR_LEDs(uint8_t error_type){
 		tempB = 0xFFFF;
 
 	while(1){
-		setLeftRGB(0,0,0);
-		setRightRGB(0,0,0);
+		if(RGB_led_type == RGB_ANALOG){
+			setLeftRGB(0,0,0);
+			setRightRGB(0,0,0);
+		} else {
+			setDigitalHue(0,10,0,0,0);
+			set_left_gnd();
+			set_right_gnd();
+			L_APA_write(led_num);
+			R_APA_write(led_num);
+	}
 		
 		setRed(0);
 		setWhite(0);
-		setAux(0);
 		port_pin_set_output_level(STAT_LED, false);
 
 		while(millis() - timer < 1000) {
+			///if(RGB_led_type != RGB_ANALOG) {
+			//	L_APA_write(MAX_LEDCOUNT);
+			//	R_APA_write(MAX_LEDCOUNT);
+			//}
 			check_time(&timer);
 		}
 		timer = millis();
-
-		setLeftRGB(tempR,tempG,tempB);
-		setRightRGB(tempR,tempG,tempB);
+		
+		if(RGB_led_type == RGB_ANALOG){
+			setLeftRGB(tempR,tempG,tempB);
+			setRightRGB(tempR,tempG,tempB);
+		} else {
+			switch(error_type){
+				case 2:
+					setDigitalHue(0,15,0,31,0);// Green
+					break;
+				case 4:
+					setDigitalHue(1910,15,0,31,0);// Yellow
+					break;
+				case 0:
+					setDigitalHue(3820,15,0,31,0);// Red
+					break;
+				case 5:
+					setDigitalHue(5730,15,0,31,0);// Purple
+					break;
+				case 1:
+					setDigitalHue(7640,15,0,31,0);// Blue
+					break;
+				case 3:
+					setDigitalHue(9550,15,0,31,0);// Teal
+					break;
+	}
+		set_left_gnd();
+		set_right_gnd();
+		L_APA_write(led_num);
+		R_APA_write(led_num);
+		}
 		
 		setRed(0xFFFF);
 		setWhite(0xFFFF);
-		setAux(1);
 		port_pin_set_output_level(STAT_LED, true);
 
 		while(millis() - timer < 250) {
@@ -315,17 +352,16 @@ void BlinkTail(uint16_t brightness, float rate){
 	static bool tail_on = false;
 	static uint32_t timer = 0;
 	check_time(&timer);
-	if(tail_on && (millis()-timer) < blink_on_time &&
-		!((millis()-timer) >= blink_off_time+blink_on_time)){
-		setRed(brightness);
-	}
-	else if(!tail_on && (millis()-timer) < blink_off_time &&
-			!((millis()-timer) >= blink_off_time+blink_on_time)){
-		setRed(0);
-	}
-	else{
+	if((tail_on && (millis()-timer) > blink_on_time) ||
+		(!tail_on && (millis()-timer) > blink_off_time)){
 		tail_on = !tail_on;
 		timer = millis();
+	}
+
+	if(tail_on){
+		setRed(brightness);
+	}else{
+		setRed(0);
 	}
 }
 
@@ -686,41 +722,46 @@ void DigitalSideLights(){
 					break;
 				case MODE_DIGITAL_SKITTLES:
 				{
-					for(uint16_t i = 0; i < led_num; i++)
-					{
-						uint8_t weighted_index = (rand() / (RAND_MAX/6));
-						L_SPI_send_buf[(i*4)+4] = R_SPI_send_buf[(i*4)+4] = (0b11100000 | (uint16_t)(Digital_Skittles_Brightness*(31.0/100.0)));
-						switch(weighted_index){
-							case 0:
-								L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = (rand() >> 31);
-								L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = (rand() >> 23);
-								L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = (rand() >> 23);
-								break;
-							case 1:
-								L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = (rand() >> 23);
-								L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = (rand() >> 31);
-								L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = (rand() >> 23);
-								break;
-							case 2:
-								L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = (rand() >> 23);
-								L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = (rand() >> 23);
-								L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = (rand() >> 31);
-								break;
-							case 3:
-								L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = (rand() >> 23);
-								L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = (rand() >> 27);
-								L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = (rand() >> 27);
-								break;
-							case 4:
-								L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = (rand() >> 27);
-								L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = (rand() >> 23);
-								L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = (rand() >> 27);
-								break;
-							case 5:
-								L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = (rand() >> 27);
-								L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = (rand() >> 27);
-								L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = (rand() >> 23);
-								break;
+					static uint8_t skittles_refresh_counter = 0;
+					skittles_refresh_counter++;
+					if(digital_refresh_rate/skittles_refresh_counter <= 20){
+						skittles_refresh_counter = 0;
+						for(uint16_t i = 0; i < led_num; i++)
+						{
+							uint8_t weighted_index = (rand() / (RAND_MAX/6));
+							L_SPI_send_buf[(i*4)+4] = R_SPI_send_buf[(i*4)+4] = (0b11100000 | (uint16_t)(Digital_Skittles_Brightness*(31.0/100.0)));
+							switch(weighted_index){
+								case 0:
+									L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = (rand() >> 31);
+									L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = (rand() >> 23);
+									L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = (rand() >> 23);
+									break;
+								case 1:
+									L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = (rand() >> 23);
+									L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = (rand() >> 31);
+									L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = (rand() >> 23);
+									break;
+								case 2:
+									L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = (rand() >> 23);
+									L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = (rand() >> 23);
+									L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = (rand() >> 31);
+									break;
+								case 3:
+									L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = (rand() >> 23);
+									L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = (rand() >> 27);
+									L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = (rand() >> 27);
+									break;
+								case 4:
+									L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = (rand() >> 27);
+									L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = (rand() >> 23);
+									L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = (rand() >> 27);
+									break;
+								case 5:
+									L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = (rand() >> 27);
+									L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = (rand() >> 27);
+									L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = (rand() >> 23);
+									break;
+							}
 						}
 					}
 					break;
@@ -758,12 +799,11 @@ void DigitalSideLights(){
 					// New color is chosen by throttle position
 					// old colors get pushed back at a rate set by the RPM
 					// brightness is set by slider
-					for(uint16_t i = led_num-1; i > 0; i--)
-					{
-						L_SPI_send_buf[(i*4)+4] = R_SPI_send_buf[(i*4)+4] = L_SPI_send_buf[((i-1)*4)+4];
-						L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = L_SPI_send_buf[((i-1)*4)+5];
-						L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = L_SPI_send_buf[((i-1)*4)+6];
-						L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = L_SPI_send_buf[((i-1)*4)+7];
+					static uint32_t shift_rate_timer = 0;
+					if((millis()-shift_rate_timer) >= (100-(((float)latest_vesc_vals.rpm/mcconf_limits.max_erpm)*100))){
+						shift_rate_timer = millis();
+						memmove(L_SPI_send_buf+8,L_SPI_send_buf+4,(led_num-1)*4);
+						memmove(R_SPI_send_buf+8,R_SPI_send_buf+4,(led_num-1)*4);
 					}
 
 					uint16_t x = (remote_y*3);
@@ -824,12 +864,11 @@ void DigitalSideLights(){
 				}
 				case MODE_DIGITAL_COMPASS_SNAKE:
 				{
-					for(uint16_t i = led_num-1; i > 0; i--)
-					{
-						L_SPI_send_buf[(i*4)+4] = R_SPI_send_buf[(i*4)+4] = L_SPI_send_buf[((i-1)*4)+4];
-						L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = L_SPI_send_buf[((i-1)*4)+5];
-						L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = L_SPI_send_buf[((i-1)*4)+6];
-						L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = L_SPI_send_buf[((i-1)*4)+7];
+					static uint32_t shift_rate_timer = 0;
+					if((millis()-shift_rate_timer) >= 10){
+						shift_rate_timer = millis();
+						memmove(L_SPI_send_buf+8,L_SPI_send_buf+4,(led_num-1)*4);
+						memmove(R_SPI_send_buf+8,R_SPI_send_buf+4,(led_num-1)*4);
 					}
 
 					int x = (heading/360.0)*764*4;
@@ -871,7 +910,6 @@ void BrakeLight(){
 		float brake_temp;
 
 		if(temp_y < 128-(128*((float)deadzone/100.0))){
-			//setRed(brake_offset);
 			switch(brake_light_mode){
 				case BRAKE_FADE:
 				brake_temp = (((0xFFFF-brake_offset)/(128-(128*((float)deadzone/100.0)))*((128-(128*((float)deadzone/100.0)))-temp_y))+brake_offset);
@@ -995,6 +1033,7 @@ void getLightSens(uint16_t* light_val) {
 
 // Start: 0-764*zoom
 // Zoom: 1-10
+// Brightness: 1-31
 void setDigitalHue(uint16_t start, uint8_t zoom, uint16_t offset, uint8_t hue_brightness, bool reverse_direction){
 	int x = 0;
 	for(uint16_t i = 0; i < led_num; i++)

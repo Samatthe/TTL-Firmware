@@ -21,8 +21,8 @@
 #define ESCVARS_H
 
 enum ESC_FW{
-	FW_2v18 = 0,
-	FW_3v00,
+	FW_3v6 = 0,
+	FW_3v7,
 	FW_UNITY,
 	FW_ACKMANIAC,
 };

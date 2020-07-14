@@ -51,6 +51,7 @@ bool SEND_Lights_CONFIG = 0;
 bool SEND_TTL_FW = 0;
 bool OK_EXPECTED = 0;
 
+uint32_t ble_noise_timer = 0;
 int BLE_delay = 1000;
 
 int ble_usart_count = 0;
@@ -79,6 +80,7 @@ uint8_t BLE_MSG[MAX_BLE_MESSAGE_SIZE];
 #define Read_Remote_Config		0xFB
 #define Read_ESC_Config			0xFA
 #define Read_TTL_FW				0xF9
+#define Update_TTL_FW			0xF8
 #define Custom_Values			0xB1
 #define Digital_Static_Values	0xB9
 #define Digital_Skittles_Values	0xBA
@@ -149,7 +151,18 @@ void configure_BLE_module()
 {
 	int baud = 0;
 	int bauds[5] = {9600, 19200, 38400, 57600, 115200};
+	uint32_t ble_config_time = millis();
+	static uint32_t ble_config_timeout = 2000;
+
 	while(1){
+		check_time(&ble_config_time);
+		if((millis()-ble_config_time) > ble_config_timeout){
+			configure_ble_usart(BLE_BAUD);
+			for(int i = 0; i < 5000; ++i);
+			usart_read_buffer_job(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE);
+			break;
+		}
+		
 		configure_ble_usart(bauds[baud]);
 		usart_read_buffer_job(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE);
 
@@ -272,6 +285,9 @@ void process_ble_packet(){
 			SEND_TTL_FW = 1;
 			SEND_CONTINUOUS = 0;
 			break;
+		case Update_TTL_FW:
+			NVIC_SystemReset();
+			break;
 		case Aux_Pressed:
 			AppAuxButton = 1;
 			break;
@@ -366,6 +382,7 @@ void process_ble_packet(){
 			led_num = (ble_recieve_packet.payload[2]);
 			SYNC_RGB = (ble_recieve_packet.payload[3]&0x80)==0x80;
 			BRAKE_ALWAYS_ON = (ble_recieve_packet.payload[3]&0x40)==0x40;
+			DEFAULT_STATE = (ble_recieve_packet.payload[3]&0x20)==0x20;
 			save_orientation_controls_remote_esc_lights();
 			break;
 		case Color_Cycle_Values:
@@ -568,30 +585,24 @@ void read_ble_packet(){
 
 		process_ble_packet();
 			
-		memset(ble_USART_read_buffer, 0, MAX_BLE_MESSAGE_SIZE);
-		//Stop listening to the BLE UART
-		usart_abort_job(&ble_usart, USART_TRANSCEIVER_RX);
-		// Start listening to the BLE UART
-		usart_read_buffer_job(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE);
+		usart_abort_job(&ble_usart, USART_TRANSCEIVER_RX); //Stop listening to the BLE UART
+		memset(ble_USART_read_buffer, 0, MAX_BLE_MESSAGE_SIZE); // Clear BLE read buffer
+		usart_read_buffer_job(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE); // Start listening to the BLE UART
 	} else if(check_ble_AT_recieved()){
 		if(!BLE_CONFIGURED && OK_EXPECTED){
 			BLE_CONFIGURED = true;
 			OK_EXPECTED = false;
 		}
 		
-		memset(ble_USART_read_buffer, 0, MAX_BLE_MESSAGE_SIZE);
-		//Stop listening to the BLE UART
-		usart_abort_job(&ble_usart, USART_TRANSCEIVER_RX);
-		// Start listening to the BLE UART
-		usart_read_buffer_job(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE);
-	} else if(CHECK_FOR_NOISE(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE)){
-		//Stop listening to the BLE UART
-		usart_abort_job(&ble_usart, USART_TRANSCEIVER_RX);
+		usart_abort_job(&ble_usart, USART_TRANSCEIVER_RX); //Stop listening to the BLE UART
+		memset(ble_USART_read_buffer, 0, MAX_BLE_MESSAGE_SIZE); // Clear BLE read buffer
+		usart_read_buffer_job(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE); // Start listening to the BLE UART
+	} else if(CHECK_FOR_NOISE(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE, &ble_noise_timer)){
+		usart_abort_job(&ble_usart, USART_TRANSCEIVER_RX); //Stop listening to the BLE UART
 		memset(ble_USART_read_buffer, 0, MAX_BLE_MESSAGE_SIZE);
 		uint32_t temp_timer = millis();
 		while(millis() - temp_timer < 10){}
-		// Start listening to the BLE UART
-		usart_read_buffer_job(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE);
+		usart_read_buffer_job(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE);// Start listening to the BLE UART
 	}
 }
 #endif /* BLE_UART_H_ */

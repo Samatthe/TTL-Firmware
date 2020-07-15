@@ -48,7 +48,7 @@ bool SEND_CONTROLS_CONFIG = 0;
 bool SEND_REMOTE_CONFIG = 0;
 bool SEND_ESC_CONFIG = 0;
 bool SEND_Lights_CONFIG = 0;
-bool SEND_TTL_FW = 0;
+bool SEND_TTL_FW_HW = 0;
 bool OK_EXPECTED = 0;
 
 uint32_t ble_noise_timer = 0;
@@ -79,7 +79,7 @@ uint8_t BLE_MSG[MAX_BLE_MESSAGE_SIZE];
 #define Aux_Released			0xAB
 #define Read_Remote_Config		0xFB
 #define Read_ESC_Config			0xFA
-#define Read_TTL_FW				0xF9
+#define Read_TTL_FW_HW			0xF9
 #define Update_TTL_FW			0xF8
 #define Custom_Values			0xB1
 #define Digital_Static_Values	0xB9
@@ -110,7 +110,7 @@ uint8_t BLE_MSG[MAX_BLE_MESSAGE_SIZE];
 #define BLE_LIGHTS_CONFIG		0x75
 #define BLE_ESC_CONFIG			0x73
 #define BLE_REMOTE_CONFIG		0x72
-#define BLE_TTL_FW				0x74
+#define BLE_TTL_FW_HW			0x74
 #define	BLE_ORIENTATION_CONFIG	0x71
 #define BLE_CONTROLS_CONFIG		0x81
 
@@ -281,8 +281,8 @@ void process_ble_packet(){
 			SEND_Lights_CONFIG = 1;
 			SEND_CONTINUOUS = 0;
 			break;
-		case Read_TTL_FW:
-			SEND_TTL_FW = 1;
+		case Read_TTL_FW_HW:
+			SEND_TTL_FW_HW = 1;
 			SEND_CONTINUOUS = 0;
 			break;
 		case Update_TTL_FW:

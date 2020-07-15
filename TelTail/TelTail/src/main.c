@@ -902,18 +902,20 @@ int main (void)
 
 		//////////////////////////   Handle FW Read Request   //////////////////////////
 		///////////////////////////////////////////////////////////////////////////////////
-		if(SEND_TTL_FW)
+		if(SEND_TTL_FW_HW)
 		{
 			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
 			BLE_TX_TIME = millis();
 
 			// Global LED Settings
-			ble_write_buffer[0] = BLE_TTL_FW;//0x74;
+			ble_write_buffer[0] = BLE_TTL_FW_HW;//0x74;
 			ble_write_buffer[1] = (uint8_t)(TTL_FW%100 & 0x00FF);
 			ble_write_buffer[2] = (uint8_t)(TTL_FW/100 & 0x00FF);
-			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 3);
+			ble_write_buffer[3] = (uint8_t)(HW_VER%100 & 0x00FF);
+			ble_write_buffer[4] = (uint8_t)(HW_VER/100 & 0x00FF);
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 5);
 
-			SEND_TTL_FW = 0;
+			SEND_TTL_FW_HW = 0;
 			SEND_CONTINUOUS = 1;
 		}
 		

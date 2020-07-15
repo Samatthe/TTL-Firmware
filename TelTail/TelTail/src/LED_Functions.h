@@ -137,7 +137,6 @@ void setLeftRGB(uint16_t red, uint16_t green, uint16_t blue) {
 #endif
 #if defined(HW_4v1)
 	tcc_set_compare_value(&tcc0, (enum tcc_match_capture_channel) (1), red); 
-	//tcc_set_compare_value(&tcc0, (enum tcc_match_capture_channel) (0), red); //RG
 	tcc_set_compare_value(&tcc2, (enum tcc_match_capture_channel) (1), green);
 	tcc_set_compare_value(&tcc1, (enum tcc_match_capture_channel) (1), blue);
 #endif
@@ -156,9 +155,6 @@ void setRightRGB(uint16_t red, uint16_t green, uint16_t blue) {
 	tcc_set_compare_value(&tcc0, (enum tcc_match_capture_channel) (2), red);
 	tcc_set_compare_value(&tcc0, (enum tcc_match_capture_channel) (3), green);
 	tcc_set_compare_value(&tcc0, (enum tcc_match_capture_channel) (0), blue);
-	//tcc_set_compare_value(&tcc0, (enum tcc_match_capture_channel) (3), red);	//RB
-	//tcc_set_compare_value(&tcc0, (enum tcc_match_capture_channel) (1), green); //RR
-	//tcc_set_compare_value(&tcc0, (enum tcc_match_capture_channel) (2), blue); //LR
 #endif
 }
 

@@ -306,6 +306,7 @@ int main (void)
 	
 	// Configure The button input pin and interrupt handlers for pulse width measurement
 	configure_port_pins();
+	configure_pw_tc();
 	config_eic();    // Configure the external interruption
 	config_evsys();  // Configure the event system
 	config_gpio();   // Configure the dedicated pin
@@ -834,10 +835,11 @@ int main (void)
 			ble_write_buffer[3] = (uint8_t)((single_aux_control << 4) | single_all_control);
 			ble_write_buffer[4] = (uint8_t)((single_head_control << 4) | single_side_control);
 			ble_write_buffer[5] = (uint8_t)((single_down_control << 4) | single_up_control);
-			ble_write_buffer[6] = (uint8_t)((dual_aux_control << 4) | dual_all_control);
-			ble_write_buffer[7] = (uint8_t)((dual_head_control << 4) | dual_side_control);
-			ble_write_buffer[8] = (uint8_t)((dual_down_control << 4) | dual_up_control);
-			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 9);
+			ble_write_buffer[6] = (uint8_t)single_brights_control;
+			//ble_write_buffer[6] = (uint8_t)((dual_aux_control << 4) | dual_all_control);
+			//ble_write_buffer[7] = (uint8_t)((dual_head_control << 4) | dual_side_control);
+			//ble_write_buffer[8] = (uint8_t)((dual_down_control << 4) | dual_up_control);
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 7);
 
 			SEND_CONTROLS_CONFIG = 0;
 			SEND_CONTINUOUS = 1;
@@ -892,8 +894,9 @@ int main (void)
 			ble_write_buffer[1] = (uint8_t)(RGB_led_type << 4) | brake_light_mode;
 			ble_write_buffer[2] = (uint8_t)(deadzone);
 			ble_write_buffer[3] = (uint8_t)(led_num);
-			ble_write_buffer[4] = (uint8_t)(SYNC_RGB << 7 | BRAKE_ALWAYS_ON << 6 | DEFAULT_STATE << 5);
-			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 5);
+			ble_write_buffer[4] = (uint8_t)(SYNC_RGB << 7 | BRAKE_ALWAYS_ON << 6 | DEFAULT_STATE << 5 | BRIGHTS_ENABLED << 4);
+			ble_write_buffer[5] = (uint8_t)(lowbeam_level);
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 6);
 
 			SEND_Lights_CONFIG = 0;
 			SEND_CONTINUOUS = 1;

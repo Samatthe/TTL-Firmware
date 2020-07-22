@@ -95,6 +95,10 @@ void configure_LED_PWM(void)
 	tcc_get_config_defaults(&config_tcc, TCC1);
 	config_tcc.counter.period = 0xFFFF;
 	config_tcc.compare.wave_generation = TCC_WAVE_GENERATION_SINGLE_SLOPE_PWM;
+	config_tcc.compare.match[0] = 0;
+	config_tcc.pins.enable_wave_out_pin[0] = true;
+	config_tcc.pins.wave_out_pin[0]        = PIN_PA06E_TCC1_WO0;
+	config_tcc.pins.wave_out_pin_mux[0]    = MUX_PA06E_TCC1_WO0;
 	if(RGB_led_type == RGB_ANALOG){
 		config_tcc.compare.match[1] = 0;
 		config_tcc.pins.enable_wave_out_pin[1] = true;
@@ -102,9 +106,6 @@ void configure_LED_PWM(void)
 		config_tcc.pins.wave_out_pin_mux[1]    = MUX_PA07E_TCC1_WO1;
 	}
 	tcc_init(&tcc1, TCC1, &config_tcc);
-	// Configure the capture channel to read pulse width of PPM_IN pin
-	TCC1->CTRLA.reg  |= TCC_CTRLA_CPTEN0;
-	TCC1->EVCTRL.reg |= TCC_EVCTRL_TCEI1 | TCC_EVCTRL_EVACT1_PWP;
 	tcc_enable(&tcc1);
 
 
@@ -160,8 +161,7 @@ void setRightRGB(uint16_t red, uint16_t green, uint16_t blue) {
 
 void setWhite(uint16_t white) {
 	head = white;
-	//tcc_set_compare_value(&tcc1, (enum tcc_match_capture_channel) (0), white);
-	port_pin_set_output_level(PIN_PA06E_TCC1_WO0, white); // Changed to non-pwm due to pulse width reading on PPM_IN pin
+	tcc_set_compare_value(&tcc1, (enum tcc_match_capture_channel) (0), white);
 }
 
 void setRed(uint16_t red) {
@@ -951,10 +951,27 @@ void BrakeLight(){
 	}
 }
 
+#define  BRIGHTS_TIMEOUT 600000 // 10min
 void HeadLight(){
+	static uint32_t brights_timer = 0;
+	
 	if(HEADLIGHTS && lightControlHead()){
-		setWhite(0xFFFF);
-	}else{
+		if(BRIGHTS_ENABLED){
+			check_time(&brights_timer);
+			if(BRIGHTS && (millis()-brights_timer > BRIGHTS_TIMEOUT)){
+				BRIGHTS = false;
+			}
+
+			if(BRIGHTS) {
+				setWhite(0xFFFF); // 100%
+			} else {
+				brights_timer = millis(); // reset the timer when low
+				setWhite(0xFFFF*((float)lowbeam_level/100));
+			}
+		} else {
+			setWhite(0xFFFF);
+		}
+	} else {
 		setWhite(0);
 	}
 }

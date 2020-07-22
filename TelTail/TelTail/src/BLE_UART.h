@@ -383,6 +383,8 @@ void process_ble_packet(){
 			SYNC_RGB = (ble_recieve_packet.payload[3]&0x80)==0x80;
 			BRAKE_ALWAYS_ON = (ble_recieve_packet.payload[3]&0x40)==0x40;
 			DEFAULT_STATE = (ble_recieve_packet.payload[3]&0x20)==0x20;
+			BRIGHTS_ENABLED = (ble_recieve_packet.payload[3]&0x10)==0x10;
+			lowbeam_level = (ble_recieve_packet.payload[4]);
 			save_orientation_controls_remote_esc_lights();
 			break;
 		case Color_Cycle_Values:
@@ -439,12 +441,13 @@ void process_ble_packet(){
 			single_side_control = (ble_recieve_packet.payload[3]&0x0F);
 			single_down_control = (ble_recieve_packet.payload[4]&0xF0)>>4;
 			single_up_control = (ble_recieve_packet.payload[4]&0x0F);
-			dual_aux_control = (ble_recieve_packet.payload[5]&0xF0)>>4;
+			single_brights_control = (ble_recieve_packet.payload[5]&0x0F);
+			/*dual_aux_control = (ble_recieve_packet.payload[5]&0xF0)>>4;
 			dual_all_control = (ble_recieve_packet.payload[5]&0x0F);
 			dual_head_control = (ble_recieve_packet.payload[6]&0xF0)>>4;
 			dual_side_control = (ble_recieve_packet.payload[6]&0x0F);
 			dual_down_control = (ble_recieve_packet.payload[7]&0xF0)>>4;
-			dual_up_control = (ble_recieve_packet.payload[7]&0x0F);
+			dual_up_control = (ble_recieve_packet.payload[7]&0x0F);*/
 			save_orientation_controls_remote_esc_lights();
 			break;
 		case Custom_Values:

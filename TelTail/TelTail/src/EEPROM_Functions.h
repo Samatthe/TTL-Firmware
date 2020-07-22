@@ -311,7 +311,7 @@ void save_orientation_controls_remote_esc_lights()
 	eeprom_data[0] = ORIENTATION[0];
 	eeprom_data[1] = ORIENTATION[1];
 
-	eeprom_data[2] = ((AUX_ENABLED << 1) | TURN_ENABLED);
+	eeprom_data[2] = ((BRIGHTS_ENABLED << 2) | (AUX_ENABLED << 1) | TURN_ENABLED);
 	eeprom_data[3] = auxControlType;
 	eeprom_data[4] = auxTimedDuration;
 	eeprom_data[5] = single_aux_control;
@@ -320,12 +320,14 @@ void save_orientation_controls_remote_esc_lights()
 	eeprom_data[8] = single_side_control;
 	eeprom_data[9] = single_up_control;
 	eeprom_data[10] = single_down_control;
-	eeprom_data[11] = dual_aux_control;
+	eeprom_data[11] = single_brights_control;
+	eeprom_data[12] = lowbeam_level;
+	/*eeprom_data[11] = dual_aux_control;
 	eeprom_data[12] = dual_all_control;
 	eeprom_data[13] = dual_head_control;
 	eeprom_data[14] = dual_side_control;
 	eeprom_data[15] = dual_up_control;
-	eeprom_data[16] = dual_down_control;
+	eeprom_data[16] = dual_down_control;*/
 
 	eeprom_data[17] = ((remote_type << 4) | (button_type & 0x0F));
 	eeprom_data[18] = deadzone;
@@ -352,8 +354,9 @@ void restore_orientation_controls_remote_esc_lights()
 		ORIENTATION[0] = 1; // Connectors up
 		ORIENTATION[1] = 6; // Power front
 
-		AUX_ENABLED = 0; // Aux disabled
-		TURN_ENABLED = 0; // Turn disabled
+		BRIGHTS_ENABLED = false;
+		AUX_ENABLED = false; // Aux disabled
+		TURN_ENABLED = false; // Turn disabled
 		auxControlType = AUX_MOMENTARY;
 		auxTimedDuration = 10; // 1 second
 		single_aux_control = PRESS_NONE;
@@ -362,12 +365,14 @@ void restore_orientation_controls_remote_esc_lights()
 		single_side_control = LONG_PRESS;
 		single_up_control = DOUBLE_TAP;
 		single_down_control = TRIPLE_TAP;
-		dual_aux_control = PRESS_NONE;
+		single_brights_control = PRESS_NONE;
+		lowbeam_level = 70;
+		/*dual_aux_control = PRESS_NONE;
 		dual_all_control = SINGLE_TAP;
 		dual_head_control = MEDIUM_PRESS;
 		dual_side_control = LONG_PRESS;
 		dual_up_control =  RIGHT_TAP;
-		dual_down_control = LEFT_TAP;
+		dual_down_control = LEFT_TAP;*/
 
 		remote_type = 0;
 		deadzone = 10;
@@ -390,7 +395,8 @@ void restore_orientation_controls_remote_esc_lights()
 	else { // else restore the stored data
 		ORIENTATION[0] = eeprom_data[0];
 		ORIENTATION[1] = eeprom_data[1];
-
+		
+		BRIGHTS_ENABLED = (eeprom_data[2] & 0x04) >> 2;
 		AUX_ENABLED = (eeprom_data[2] & 0x02) >> 1;
 		TURN_ENABLED = (eeprom_data[2] & 0x01);
 		auxControlType = eeprom_data[3];
@@ -401,12 +407,14 @@ void restore_orientation_controls_remote_esc_lights()
 		single_side_control = eeprom_data[8];
 		single_up_control = eeprom_data[9];
 		single_down_control = eeprom_data[10];
-		dual_aux_control = eeprom_data[11];
+		single_brights_control = eeprom_data[11];
+		lowbeam_level = eeprom_data[12];
+		/*dual_aux_control = eeprom_data[11];
 		dual_all_control = eeprom_data[12];
 		dual_head_control = eeprom_data[13];
 		dual_side_control = eeprom_data[14];
 		dual_up_control = eeprom_data[15];
-		dual_down_control = eeprom_data[16];
+		dual_down_control = eeprom_data[16];*/
 
 		remote_type = ((eeprom_data[17]&0xF0)>>4);
 		button_type = (eeprom_data[17]&0x0F);

@@ -44,12 +44,13 @@ uint8_t single_head_control = 0;
 uint8_t single_side_control = 0;
 uint8_t single_up_control = 0;
 uint8_t single_down_control = 0;
-uint8_t dual_aux_control = 0;
+uint8_t single_brights_control = 0;
+/*uint8_t dual_aux_control = 0;
 uint8_t dual_all_control = 0;
 uint8_t dual_head_control = 0;
 uint8_t dual_side_control = 0;
 uint8_t dual_up_control = 0;
-uint8_t dual_down_control = 0;
+uint8_t dual_down_control = 0;*/
 
 uint8_t AppAuxButton = 0;
 uint8_t lAppAuxButton = 0;
@@ -117,7 +118,20 @@ void gpio_in(int port, int pin);
 void gpio_pmuxen(int port, int pin, int mux);
 void config_gpio(void);
 void HandleAppRemote(void);
+void configure_pw_tc(void);
 
+struct tc_module pw_timer;
+void configure_pw_tc(void)
+{
+	struct tc_config config_tc;
+	tc_get_config_defaults(&config_tc);
+	config_tc.enable_capture_on_channel[TC_COMPARE_CAPTURE_CHANNEL_0] = true;
+	//config_tc.counter_16_bit = true;
+	tc_init(&pw_timer, TC3, &config_tc);
+	TC3->COUNT16.CTRLC.reg  |= TC_CTRLC_CPTEN0;
+	TC3->COUNT16.EVCTRL.reg |= TC_EVCTRL_TCEI | TC_EVCTRL_EVACT_PWP;
+	tc_enable(&pw_timer);
+}//*/
 
 /* Sense: 
  * None, Rise, Fall, Both, High, Low
@@ -160,7 +174,8 @@ void config_evsys() {
 
 	// Event receiver
 	EVSYS->USER.reg = EVSYS_USER_CHANNEL(1) | // Set channel n-1
-	EVSYS_USER_USER(EVSYS_ID_USER_TCC1_EV_1); // Match/Capture 1 on TCC1
+	//EVSYS_USER_USER(EVSYS_ID_USER_TCC1_EV_1); // Match/Capture 1 on TCC1
+	EVSYS_USER_USER(EVSYS_ID_USER_TC3_EVU); // Match/Capture on TC3
 	// Event channel
 	EVSYS->CHANNEL.reg = EVSYS_CHANNEL_CHANNEL(0) | // Set channel n
 	EVSYS_CHANNEL_PATH_ASYNCHRONOUS |
@@ -191,7 +206,7 @@ void config_gpio() {
 
 //uint16_t light_sens = 0; // for PWM debugging
 inline int get_pulse_width() {
-	return TCC1->CC[0].bit.CC;
+	return TC3->COUNT16.CC[0].bit.CC;
 }
 
 void HandleUserInput()
@@ -211,12 +226,12 @@ void HandleUserInput()
 			remote_y = (uint8_t)(temp);
 			break;}
 		case REMOTE_UART_SINGLE:
-		case REMOTE_UART_DUAL:
+		//case REMOTE_UART_DUAL:
 			READ_VESC_CHUCK = true;
 			remote_y = rec_chuck_struct.js_y;
-			if(remote_type == REMOTE_UART_DUAL)
-				remote_x = rec_chuck_struct.js_x;
-			else
+			//if(remote_type == REMOTE_UART_DUAL)
+			//	remote_x = rec_chuck_struct.js_x;
+			//else
 				remote_x = 255/2;
 			break;
 		case REMOTE_APP:
@@ -329,11 +344,11 @@ void HandleUserInput()
 		tapSequence = 1;
 	}
 	if(tapSequence){
-		if(remote_type == REMOTE_UART_DUAL && VescRemoteX <= 110 && tapIndex == 1)
+		/*if(remote_type == REMOTE_UART_DUAL && VescRemoteX <= 110 && tapIndex == 1)
 			ButtonPressType = LEFT_TAP;
 		else if(remote_type == REMOTE_UART_DUAL && VescRemoteX >= 150 && tapIndex == 1)
 		ButtonPressType = RIGHT_TAP;
-		else if(tapIndex == 1){
+		else*/ if(tapIndex == 1){
 			ButtonPressType = SINGLE_TAP;
 		}
 		else if(tapIndex == 2)
@@ -355,21 +370,22 @@ void HandleUserInput()
 		} else {
 			switch(auxControlType){
 				case AUX_MOMENTARY:
-				if(ButtonHeldTime > 500 && (single_aux_control != PRESS_NONE ||  dual_aux_control != PRESS_NONE)){
+				if(ButtonHeldTime > 500 && (single_aux_control != PRESS_NONE )){
+				//||  dual_aux_control != PRESS_NONE)){
 					AUX_OUTPUT = true;
 				} else {
 					AUX_OUTPUT = false;
 				}
 				break;
 				case AUX_TOGGLED:
-				if((remote_type != REMOTE_UART_DUAL && single_aux_control == ButtonPressType  && single_aux_control != PRESS_NONE)
-				|| (remote_type == REMOTE_UART_DUAL && dual_aux_control == ButtonPressType && dual_aux_control != PRESS_NONE)) {
+				if((/*remote_type != REMOTE_UART_DUAL &&*/ single_aux_control == ButtonPressType  && single_aux_control != PRESS_NONE)){
+				//|| (remote_type == REMOTE_UART_DUAL && dual_aux_control == ButtonPressType && dual_aux_control != PRESS_NONE)) {
 					AUX_OUTPUT = !AUX_OUTPUT;
 				}
 				break;
 				case AUX_TIMED:
-				if((remote_type != REMOTE_UART_DUAL && single_aux_control == ButtonPressType)
-				|| (remote_type == REMOTE_UART_DUAL && dual_aux_control == ButtonPressType)) {
+				if((/*remote_type != REMOTE_UART_DUAL &&*/ single_aux_control == ButtonPressType)){
+				//|| (remote_type == REMOTE_UART_DUAL && dual_aux_control == ButtonPressType)) {
 					AUX_OUTPUT = true;
 					AuxOnTime = millis();
 				}
@@ -393,8 +409,11 @@ void HandleUserInput()
 	/////////////   Handle the side, head, and tail lights   /////////////
 	//////////////////////////////////////////////////////////////////////
 	if(ButtonPressType != PRESS_NONE){
-		if(remote_type != REMOTE_UART_DUAL){ // If single axis remote is connected
-			if(single_all_control == ButtonPressType){
+		//if(remote_type != REMOTE_UART_DUAL){ // If single axis remote is connected
+			if(single_brights_control == ButtonPressType){
+				BRIGHTS = !BRIGHTS;
+			}
+			else if(single_all_control == ButtonPressType){
 				LIGHTS_ON = !LIGHTS_ON;
 			}
 			else if(single_head_control == ButtonPressType){
@@ -431,8 +450,8 @@ void HandleUserInput()
 				if(light_mode >= light_modes)
 					light_mode = 0;
 			}
-		}
-		else if(remote_type == REMOTE_UART_DUAL){ // If dual axis remote is connected
+		//}
+		/*else if(remote_type == REMOTE_UART_DUAL){ // If dual axis remote is connected
 			if(dual_all_control == ButtonPressType){
 				LIGHTS_ON = !LIGHTS_ON;
 			}
@@ -492,7 +511,7 @@ void HandleUserInput()
 				SIDELIGHTS = true;
 				RestoreTurnLights = false;
 			}
-		}
+		}*/
 	}
 }
 

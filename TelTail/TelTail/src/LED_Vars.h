@@ -151,6 +151,8 @@ bool SYNC_RGB = true;
 bool BRAKE_ALWAYS_ON = true;
 uint8_t brake_light_mode = BRAKE_FADE;
 bool DEFAULT_STATE = false;
+bool BRIGHTS_ENABLED = false;
+uint8_t lowbeam_level = 70; // ~70%
 
 // Bools
 uint8_t HEADLIGHTS = 0; // head/tail light enable bool
@@ -159,6 +161,7 @@ uint8_t LIGHTS_ON = 1; // all lights enable bool
 uint8_t LIGHT_CONTROLLED = 0;
 uint8_t IMU_CONTROLED = 0;
 uint8_t SWITCHES = 0;
+uint8_t BRIGHTS = 0;
 
 // Color Cycle Vars
 uint8_t cycle = 0; // cycle state

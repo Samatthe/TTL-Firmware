@@ -21,9 +21,10 @@
 #define IMU_FUNCTIONS_H
 
 #include <asf.h>
-#include "LSM9DS1_Registers.h"
-#include "LSM9DS1_Types.h"
+#include "LSM6DS1_Registers.h"
+#include "LSM6DS1_Types.h"
 #include "LED_Functions.h"
+#include "IMU_Vars.h"
 
 #ifdef HW_3v4
 #define LSMXD_AG_ADDR 0x6B
@@ -40,42 +41,6 @@ uint8_t read_buffer[DATA_LENGTH];
 #define MASTER_TIMEOUT 250
 #define MASTER_BAUD 500
 struct i2c_master_module i2c_master_instance;
-
-enum lsm9ds1_axis {
-	X_AXIS,
-	Y_AXIS,
-	Z_AXIS,
-	ALL_AXIS
-};
-
-enum orientation{
-	ORIENT_UP = 1,
-	ORIENT_DOWN,
-	ORIENT_LEFT,
-	ORIENT_RIGHT,
-	ORIENT_REAR,
-	ORIENT_FRONT
-};
-
-struct IMUSettings settings;
-	
-// We'll store the gyro, accel, and magnetometer readings in a series of
-// public class variables. Each sensor gets three variables -- one for each
-// axis. Call readGyro(), readAccel(), and readMag() first, before using
-// these variables!
-// These values are the RAW signed 16-bit readings from the sensors.
-int16_t gx = 0, gy = 0, gz = 0; // x, y, and z axis readings of the gyroscope
-int16_t ax = 0, ay = 0, az = 0; // x, y, and z axis readings of the accelerometer
-int16_t mx = 0, my = 0, mz = 0; // x, y, and z axis readings of the magnetometer
-int16_t temperature; // Chip temperature
-float gBias[3], aBias[3], mBias[3];
-int16_t gBiasRaw[3], aBiasRaw[3], mBiasRaw[3];
-
-// Orientaion vars
-uint8_t ORIENTATION[2] = {1,2}; // {connectors, power}
-int16_t cgx = 0, cgy = 0, cgz = 0; // corrected x, y, and z axis readings of the gyroscope
-int16_t cax = 0, cay = 0, caz = 0; // corrected x, y, and z axis readings of the accelerometer
-int16_t cmx = 0, cmy = 0, cmz = 0; // corrected x, y, and z axis readings of the magnetometer
 	
 // begin() -- Initialize the gyro, accelerometer, and magnetometer.
 // This will set up the scale and output rate of each sensor. The values set
@@ -98,7 +63,7 @@ uint8_t accelAvailable(void);
 //			0 - No new data available
 uint8_t gyroAvailable(void);
 	
-// gyroAvailable() -- Polls the temperature status register to check
+// tempAvailable() -- Polls the temperature status register to check
 // if new data is available.
 // Output:	1 - New data available
 //			0 - No new data available
@@ -1126,6 +1091,7 @@ uint8_t accelAvailable()
 	
 	return (status & (1<<0));
 #endif
+	return 0;
 }
 
 uint8_t gyroAvailable()
@@ -1136,6 +1102,7 @@ uint8_t gyroAvailable()
 	
 	return ((status & (1<<1)) >> 1);
 #endif
+	return 0;
 }
 
 uint8_t tempAvailable()
@@ -1145,6 +1112,7 @@ uint8_t tempAvailable()
 	
 	return ((status & (1<<2)) >> 2);
 #endif
+	return 0;
 }
 
 uint8_t magAvailable(enum lsm9ds1_axis axis)
@@ -1156,6 +1124,7 @@ uint8_t magAvailable(enum lsm9ds1_axis axis)
 	
 	return ((status & (1<<axis)) >> axis);
 #endif
+	return 0;
 }
 
 void readAccel()
@@ -1191,6 +1160,7 @@ int16_t readAccel_axis(enum lsm9ds1_axis axis)
 	
 	return value;
 #endif
+	return 0;
 }
 
 void readMag()
@@ -1211,15 +1181,29 @@ int16_t readMag_axis(enum lsm9ds1_axis axis)
 	mReadBytes(OUT_X_L_M + (2 * axis), temp, 2);
 	return (temp[1] << 8) | temp[0];
 #endif
+	return 0;
 }
 
+// Scale: 16 LSB/deg C
+/*#define TEMP_AVG_NUM 5
+float IMU_temp_total = 0;
+float IMU_temp_buf[TEMP_AVG_NUM] = 0;
+float IMU_temp_avg = 25;*/
 void readTemp()
 {
-#ifdef HW_3v4
+	static uint8_t temp_avg_index = 0;
 	uint8_t temp[2]; // We'll read two bytes from the temperature sensor into temp	
 	xgReadBytes(OUT_TEMP_L, temp, 2); // Read 2 bytes, beginning at OUT_TEMP_L
-	temperature = ((int16_t)temp[1] << 8) | temp[0];
-#endif
+	temperature_raw = ((int16_t)temp[1] << 8) | temp[0];
+	temperature_raw += 400; // Adjust for the 25 deg offset of the sensor
+	IMU_temp = (((float)temperature_raw)/16.0);
+	/*IMU_temp_total -= IMU_temp_buf[temp_avg_index];
+	IMU_temp_total += IMU_temp;
+	IMU_temp_buf[temp_avg_index] = IMU_temp;
+	IMU_temp_avg = IMU_temp_total/TEMP_AVG_NUM;
+	temp_avg_index++;
+	if(temp_avg_index >= TEMP_AVG_NUM)
+	temp_avg_index = 0;*/
 }
 
 void readGyro()
@@ -1257,6 +1241,7 @@ int16_t readGyro_axis(enum lsm9ds1_axis axis)
 	
 	return value;
 #endif
+	return 0;
 }
 
 float calcGyro(int16_t gyro)
@@ -1502,6 +1487,7 @@ uint8_t getInactivity()
 	temp &= (0x10);
 	return temp;
 #endif
+	return 0;
 }
 
 void configAccelInt(uint8_t generator, bool andInterrupts)
@@ -1543,6 +1529,7 @@ uint8_t getAccelIntSrc()
 	
 	return 0;
 #endif
+	return 0;
 }
 
 void configGyroInt(uint8_t generator, bool aoi, bool latch)
@@ -1589,6 +1576,7 @@ uint8_t getGyroIntSrc()
 	
 	return 0;
 #endif
+	return 0;
 }
 
 void configMagInt(uint8_t generator, enum h_lactive activeLow, bool latch)
@@ -1630,6 +1618,7 @@ uint8_t getMagIntSrc()
 	
 	return 0;
 #endif
+	return 0;
 }
 
 void sleepGyro(bool enable)
@@ -1680,6 +1669,7 @@ uint8_t getFIFOSamples()
 #ifdef HW_3v4
 	return (xgReadByte(FIFO_SRC) & 0x3F);
 #endif
+	return 0;
 }
 
 void constrainScales()
@@ -2078,17 +2068,43 @@ void calculate_heading(){
 	headingTime = millis();
 	if(abs(gzKalman) >= 0.5){
 		if(headingTime < lheadingTime){
-			heading += (gzKalman) * (((float)(headingTime + (0xFFFFFFFF - lheadingTime)))/1000);
+			heading += (gzKalman) * (((float)(headingTime + ((0xFFFFFFFF/7500) - lheadingTime)))/1000);
 		}
 		else
 			heading += (gzKalman) * (((float)(headingTime - lheadingTime))/1000);
 	}
 	lheadingTime = headingTime;
-	if(heading < 0)
-		heading = 360 + heading;
-	else if(heading > 360)
-		heading = heading - 360;
+	while(heading < 0){	heading = 360 + heading; }
+	while(heading > 360){ heading = heading - 360; }
 }
+
+/*#define TTL_OVERTEMP_THRESHOLD 50
+enum TEMP_CURVE_CLASSIFIER{
+	TEMP_FALLING = 0,
+	TEMP_STABLE,
+	TEMP_RISING
+};
+void monitor_ttl_temp(){
+	static uint32_t over_temp_timer = 0;
+	static float ltemp = IMU_temp_avg;
+	static uint8_t temp_state = TEMP_STABLE;
+
+	if(check_timer_expired(5000)){
+		if(Abs(ltemp - IMU_temp_avg) < 0.5){
+			temp_state = TEMP_STABLE;
+		} else if(ltemp - IMU_temp_avg < -0.5){
+			temp_state = TEMP_FALLING;
+		}else if(ltemp - IMU_temp_avg > 0.5){
+			temp_state = TEMP_RISING;
+		}
+	}
+
+	if((IMU_temp_avg >= TTL_OVERTEMP_THRESHOLD) && temp_state == TEMP_RISING){
+		setLeftRGB(0,0,0);
+		setRightRGB(0,0,0);
+		ERROR_LEDs()
+	}
+}*/
 
 void update_kalman_limits(){
 	if(axKalman > kalmanAX_max)

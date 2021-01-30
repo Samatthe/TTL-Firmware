@@ -27,6 +27,7 @@ uint32_t micros(void);
 void configure_tc(void);
 void check_time(uint32_t* time_var);
 void check_time_micros(uint32_t* time_var);
+bool check_timer_expired(uint32_t* time_var, uint32_t dur);
 
 void configure_tc(void)
 {
@@ -46,7 +47,7 @@ void configure_tc(void)
 
 uint32_t millis()
 {
-	return (tc_get_count_value(&tc0)/7500);
+	return (tc_get_count_value(&tc0)/7500); //Overflows every 9.5m
 }
 
 uint32_t micros()
@@ -63,6 +64,11 @@ void check_time(uint32_t* time_var){
 void check_time_micros(uint32_t* time_var){
 	if(*time_var > micros())
 	*time_var = 0;
+}
+
+bool check_timer_expired(uint32_t* time_var, uint32_t dur){
+	check_time(time_var);
+	return (millis() - *time_var) > dur;
 }
 
 #endif

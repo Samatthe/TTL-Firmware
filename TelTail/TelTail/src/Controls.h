@@ -20,90 +20,13 @@
 #ifndef CONTROLS_H
 #define CONTROLS_H
 
-#include "VESC_UART.h"
+#include "Control_Vars.h"
+#include "ESC_UART.h"
 #include "Remote_Vars.h"
 #include "Timing.h"
+#include "LED_Vars.h"
+#include "EEPROM_Functions.h"
 //#include "BLE_UART.h"
-
-////////////////   Control Variables   /////////////////
-////////////////////////////////////////////////////////
-uint8_t VescRemoteX = 0, VescRemoteY = 0;
-
-#define PPM_IN PIN_PB02
-
-bool AUX_ENABLED = false;
-bool TURN_ENABLED = false;
-bool AUX_OUTPUT = false;
-bool NEW_REMOTE_DATA = false;
-
-uint8_t auxControlType = 0;
-uint8_t auxTimedDuration = 0;
-uint8_t single_aux_control = 0;
-uint8_t single_all_control = 0;
-uint8_t single_head_control = 0;
-uint8_t single_side_control = 0;
-uint8_t single_up_control = 0;
-uint8_t single_down_control = 0;
-uint8_t single_brights_control = 0;
-/*uint8_t dual_aux_control = 0;
-uint8_t dual_all_control = 0;
-uint8_t dual_head_control = 0;
-uint8_t dual_side_control = 0;
-uint8_t dual_up_control = 0;
-uint8_t dual_down_control = 0;*/
-
-uint8_t AppAuxButton = 0;
-uint8_t lAppAuxButton = 0;
-uint8_t VescRemoteButton = 0;
-uint8_t ButtonPressType = 0;
-uint8_t REMOTE_TYPE = 1;
-bool tapSequence = 0;
-uint8_t tapIndex = 0;
-bool AppControlled = false;
-uint8_t AppRemoteY = 128;
-
-uint32_t ButtonHeldTime = 0;
-uint32_t ButtonDownTime = 0;
-uint32_t ButtonUpTime = 0;
-uint32_t lButtonTime = 0;
-
-#define UP_THRESH 10
-#define DWN_THRESH 10
-
-bool TurnSignalOn = 0;
-bool RestoreTurnLights = 0;
-
-uint32_t AuxOnTime = 0;
-
-enum BUTTON_TYPE{
-	BTN_NONE = 0,
-	BTN_MOMENTARY,
-	BTN_LATCHED,
-	BTN_LATCHED_PPM,
-	BTN_UART_C,
-	BTN_UART_Z,
-	BTN_THROTTLE_DWN,
-	BTN_THROTTLE_UP,
-};
-
-enum LED_CONTROLS{
-	PRESS_NONE = 0,
-	SINGLE_TAP,
-	DOUBLE_TAP,
-	TRIPLE_TAP,
-	LEFT_TAP,
-	RIGHT_TAP,
-	MEDIUM_PRESS,
-	LONG_PRESS,
-	HOLD_0s5
-};
-
-enum AUX_CONTROLS{
-	AUX_MOMENTARY = 0,
-	AUX_TOGGLED,
-	AUX_TIMED,
-	AUX_PATTERN
-};
 
 // This function is used to handle all control inputs
 // Input types include:	App commands
@@ -333,11 +256,11 @@ void HandleUserInput()
 	////////   Determine the type of button press that occurred   ////////
 	//////////////////////////////////////////////////////////////////////
 	ButtonPressType = PRESS_NONE;
-	if(ButtonDownTime > 0 && ButtonDownTime < 500){ // Button Tap
+	if(ButtonDownTime > 0 && ButtonDownTime < BUTTON_TAP_TIME){ // Button Tap
 		tapIndex++;
-	} else if(ButtonDownTime > 500 && ButtonDownTime < 1000 && !TurnSignalOn){ // Medium Press
+	} else if(ButtonDownTime > BUTTON_TAP_TIME && ButtonDownTime < BUTTON_LONG_HOLD_TIME && !TurnSignalOn){ // Medium Press
 		ButtonPressType = MEDIUM_PRESS;
-	} else if(ButtonDownTime >= 1000 && !TurnSignalOn){ // Long Press
+	} else if(ButtonDownTime >= BUTTON_LONG_HOLD_TIME && !TurnSignalOn){ // Long Press
 		ButtonPressType = LONG_PRESS;
 	}
 	if(tapIndex > 0 && ButtonUpTime > 200){
@@ -363,36 +286,32 @@ void HandleUserInput()
 	//////////////////////   Handle the aux output   /////////////////////
 	//////////////////////////////////////////////////////////////////////
 	if(AUX_ENABLED){
-		if(AppAuxButton == 1 && lAppAuxButton == 0) {
+		if(AppAuxButton && !lAppAuxButton) {
 			 AUX_OUTPUT = true;
-		} else if(AppAuxButton == 0 && lAppAuxButton == 1){
+		} else if(!AppAuxButton && lAppAuxButton){
 			 AUX_OUTPUT = false;
 		} else {
 			switch(auxControlType){
 				case AUX_MOMENTARY:
-				if(ButtonHeldTime > 500 && (single_aux_control != PRESS_NONE )){
-				//||  dual_aux_control != PRESS_NONE)){
+				if(ButtonHeldTime > 500 && single_aux_control != PRESS_NONE){
 					AUX_OUTPUT = true;
 				} else {
 					AUX_OUTPUT = false;
 				}
 				break;
 				case AUX_TOGGLED:
-				if((/*remote_type != REMOTE_UART_DUAL &&*/ single_aux_control == ButtonPressType  && single_aux_control != PRESS_NONE)){
-				//|| (remote_type == REMOTE_UART_DUAL && dual_aux_control == ButtonPressType && dual_aux_control != PRESS_NONE)) {
+				if(single_aux_control == ButtonPressType && single_aux_control != PRESS_NONE){
 					AUX_OUTPUT = !AUX_OUTPUT;
 				}
 				break;
 				case AUX_TIMED:
-				if((/*remote_type != REMOTE_UART_DUAL &&*/ single_aux_control == ButtonPressType)){
-				//|| (remote_type == REMOTE_UART_DUAL && dual_aux_control == ButtonPressType)) {
+				if((single_aux_control == ButtonPressType && single_aux_control != PRESS_NONE)){
 					AUX_OUTPUT = true;
 					AuxOnTime = millis();
 				}
 
-				check_time(&AuxOnTime);
-				if(AUX_OUTPUT == true && ((millis() - AuxOnTime) >= (auxTimedDuration * 100)))
-				AUX_OUTPUT = false;
+				if(AUX_OUTPUT == true && check_timer_expired(&AuxOnTime, (auxTimedDuration * 100)) && !lAppAuxButton)
+					AUX_OUTPUT = false;
 				break;
 				case AUX_PATTERN:
 				break;
@@ -444,11 +363,13 @@ void HandleUserInput()
 					light_mode = light_modes - 1;
 				else
 					light_mode--;
+				save_led_data();
 			}
 			else if(single_up_control == ButtonPressType){
 				light_mode++;
 				if(light_mode >= light_modes)
 					light_mode = 0;
+				save_led_data();
 			}
 		//}
 		/*else if(remote_type == REMOTE_UART_DUAL){ // If dual axis remote is connected
@@ -527,17 +448,16 @@ void HandleAppRemote(){
 	uint32_t app_remote_hard_timeout = 500;
 	static uint32_t app_remote_time = 0;
 
-	check_time(&app_remote_time);
 	if(NEW_REMOTE_DATA){
 		send_chuck_struct.js_y = remote_y = AppRemoteY;
 		app_remote_time = millis();
 		NEW_REMOTE_DATA = false;
 		SEND_VESC_CHUCK = true;
 		//AppControlled = true;
-	} else if(SEND_VESC_CHUCK && millis()-app_remote_time <= app_remote_soft_timeout){
+	} else if(SEND_VESC_CHUCK && !check_timer_expired(&app_remote_time, app_remote_soft_timeout)){
 		send_chuck_struct.js_y = remote_y = AppRemoteY;
 		SEND_VESC_CHUCK = true;
-	} else if(SEND_VESC_CHUCK && millis()-app_remote_time <= app_remote_hard_timeout){
+	} else if(SEND_VESC_CHUCK && !check_timer_expired(&app_remote_time, app_remote_hard_timeout)){
 		send_chuck_struct.js_y = remote_y = 0xFF/2;
 		SEND_VESC_CHUCK = true;
 	}

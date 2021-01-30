@@ -29,7 +29,7 @@
 #include "LED_Vars.h"
 #include "LED_Functions.h"
 #include "Controls.h"
-#include "EEPROM_Functions.h"#include "VESC_UART.h"#include "BLE_UART.h"#include "APA102.h"#include "WS2812.h"#include "SK9822.h"
+#include "EEPROM_Functions.h"#include "ESC_UART.h"#include "BLE_UART.h"#include "APA102.h"#include "WS2815.h"
 #include <math.h>
 
 ////////////   HW Configuration Variables   ////////////
@@ -92,7 +92,7 @@ void configure_port_pins(void)
 	struct port_config config_port_pin;
 	port_get_config_defaults(&config_port_pin);
 	
-	if(RGB_led_type == RGB_DIGITAL_APA102 || RGB_led_type == RGB_DIGITAL_SK9822){
+	if(RGB_led_type == RGB_DIGITAL_APA102){// || RGB_led_type == RGB_DIGITAL_WS2815){
 		config_port_pin.powersave = false;
 		config_port_pin.direction = PORT_PIN_DIR_OUTPUT;
 		port_pin_set_config(L_GND, &config_port_pin);
@@ -113,6 +113,13 @@ void configure_port_pins(void)
 	config_port_pin.input_pull = PORT_PIN_PULL_UP;
 	config_port_pin.direction = PORT_PIN_DIR_INPUT;
 	port_pin_set_config(PPM_IN, &config_port_pin);
+	
+	// Set the ESC UART pins as inputs to detect of the ESC was connected
+	config_port_pin.powersave = false;
+	config_port_pin.input_pull = PORT_PIN_PULL_DOWN;
+	config_port_pin.direction = PORT_PIN_DIR_INPUT;
+	port_pin_set_config(ESC_UART_RXTX_1, &config_port_pin);
+	port_pin_set_config(ESC_UART_RXTX_2, &config_port_pin);
 	
 	config_port_pin.powersave = false;
 	config_port_pin.input_pull = PORT_PIN_PULL_NONE;
@@ -310,21 +317,22 @@ int main (void)
 	config_eic();    // Configure the external interruption
 	config_evsys();  // Configure the event system
 	config_gpio();   // Configure the dedicated pin
-
 	
 	configure_LED_PWM();
-	if(RGB_led_type == RGB_DIGITAL_APA102 || RGB_led_type == RGB_DIGITAL_SK9822){
+	if(RGB_led_type == RGB_DIGITAL_APA102){
 		configure_APA_SPI();
-	}
+	}/* else if(RGB_led_type == RGB_DIGITAL_WS2815){
+		configure_WS_SPI();
+	}*/
 
-	//ERROR_LEDs(0);
+	//ERROR_LEDs(ERROR_GREEN, LONG_ERROR);
 #if  defined(HW_4v0) || defined(HW_4v1)
 	port_pin_set_output_level(STAT_LED, true);
 #endif
 	configure_BLE_module();
 	initIMU();
 	restore_cal_data(true);
-	if(!beginIMU()){ERROR_LEDs(0);}
+	if(!beginIMU()){ERROR_LEDs(ERROR_RED, LONG_ERROR);}
 #if  defined(HW_4v0) || defined(HW_4v1)
 	port_pin_set_output_level(STAT_LED, false);
 #endif
@@ -339,7 +347,7 @@ int main (void)
 		// Nothing to do
 	}
 	
-	//ERROR_LEDs(1); // Uncomment for testing SAM-BA and LED output functionality
+	//ERROR_LEDs(ERROR_BLUE, SHORT_ERROR); // Uncomment for testing SAM-BA and LED output functionality
 	
 	////////////////////////////////////////////
 
@@ -369,6 +377,12 @@ int main (void)
 
 	////////////////////////////////////////////
 	LIGHTS_ON = DEFAULT_STATE;
+#ifdef LED_Test
+	LIGHTS_ON = true;
+	HEADLIGHTS = true;
+	//ERROR_LEDs(ERROR_RED, SHORT_ERROR);
+	//testLEDs();
+#endif
 	while(1)
 	{
 		// Reset the module if PA15 is pulled low
@@ -381,20 +395,16 @@ int main (void)
 		if(configured_comms != esc_comms)
 		{
 			// TODO: Deconfigure old comms and configure new comms
-			ERROR_LEDs(5);
+			ERROR_LEDs(ERROR_YELLOW, PERMINENT_ERROR);
 		}
 		
 		if(configured_RGB_led_type != RGB_led_type)
 		{
-			if(configured_RGB_led_type == RGB_ANALOG){
-				
-			}
-			// TODO: Reconfigure for new LED type
-			ERROR_LEDs(5);
+			ERROR_LEDs(ERROR_PURPLE, SHORT_ERROR);
+			NVIC_SystemReset();
 		}
 
-		if((configured_RGB_led_type == RGB_DIGITAL_APA102 || configured_RGB_led_type == RGB_DIGITAL_SK9822) && current_led_num != led_num)
-		{
+		if((configured_RGB_led_type == RGB_DIGITAL_APA102 || configured_RGB_led_type == RGB_DIGITAL_APA102) && current_led_num != led_num){
 			for(uint16_t i = 0; i < MAX_LEDCOUNT; i++)
 			{
 				L_SPI_send_buf[(i*4)+4] = R_SPI_send_buf[(i*4)+4] = (0b11100000 | 0);
@@ -402,9 +412,8 @@ int main (void)
 				L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = 0;
 				L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = 0;
 			}
-
-			L_APA_write(MAX_LEDCOUNT);
-			R_APA_write(MAX_LEDCOUNT);
+			L_digital_write(MAX_LEDCOUNT);
+			R_digital_write(MAX_LEDCOUNT);
 			current_led_num = led_num;
 		}
 
@@ -412,20 +421,24 @@ int main (void)
 		////////////////////////////   Communicate with ESC   /////////////////////////////
 		///////////////////////////////////////////////////////////////////////////////////
 		if(esc_comms == COMMS_UART){
-			if(ESC_UART_CONFIGED){
-				read_vesc_packet();
-				if(ESC_FW_READ){
-					if(GET_LIMITS) {
-						vesc_get_mcconf();
-					} else if(SEND_CONTINUOUS){
-						READ_VESC_VALS = true;
-						vesc_read_all();
+			if(ESC_UART_DETECTED || !AUTO_DETECT_ESC){
+				if(ESC_UART_CONFIGED){
+					read_vesc_packet();
+					if(ESC_FW_READ){
+						if(GET_LIMITS) {
+							vesc_get_mcconf();
+							} else if(SEND_CONTINUOUS){
+							READ_VESC_VALS = true;
+							vesc_read_all();
+						}
+						} else{
+						detect_vesc_firmware();
 					}
-				} else{
-					detect_vesc_firmware();
+					} else{
+					detect_esc_baud_pins();
 				}
 			} else{
-				detect_esc_baud_pins();
+				detect_esc_uart_connected();
 			}
 		}
 		
@@ -434,9 +447,7 @@ int main (void)
 
 		readAccel(); // ~5ms combined
 		readGyro();
-#ifdef HW_3v4
-		//readMag();
-#endif
+		readTemp();
 
 		// All IMU measurements are corrected to orient power to front and connectors up
 		CorrectIMUvalues(ORIENTATION[0], ORIENTATION[1]);
@@ -467,8 +478,7 @@ int main (void)
 		
 		//////////////////////////////   Send Realtime Data   /////////////////////////////
 		///////////////////////////////////////////////////////////////////////////////////
-		check_time(&BLE_TX_TIME);
-		if(SEND_CONTINUOUS && app_remote_check == 0 && ((millis()-BLE_TX_TIME) >= BLE_TX_DELAY) && usart_get_job_status(&ble_usart, USART_TRANSCEIVER_TX) != STATUS_BUSY)
+		if(SEND_CONTINUOUS && app_remote_check == 0 && check_timer_expired(&BLE_TX_TIME, BLE_TX_DELAY) && usart_get_job_status(&ble_usart, USART_TRANSCEIVER_TX) != STATUS_BUSY)
 		{
 #if  defined(HW_4v0) || defined(HW_4v1)
 			port_pin_set_output_level(STAT_LED,true);
@@ -560,15 +570,21 @@ int main (void)
 					ble_write_buffer[15] = 0x2D;
 					ble_write_buffer[16] = ((int)(light_sens) & 0xFF); // Light Sensor
 					ble_write_buffer[17] = ((int)(light_sens) & 0xFF00) >> 8; // Light Sensor
-					ble_write_buffer[18] = 0xDE;
-					usart_write_buffer_job(&ble_usart, ble_write_buffer, 19);
+					usart_write_buffer_job(&ble_usart, ble_write_buffer, 18);
+					break;
+				case 4:
+					ble_write_buffer[0] = 0x2F;
+					ble_write_buffer[1] = (temperature_raw & 0xFF); // IMU Temperature
+					ble_write_buffer[2] = (temperature_raw & 0xFF00) >> 8; // IMU Temperature
+					ble_write_buffer[3] = 0xDE;
+					usart_write_buffer_job(&ble_usart, ble_write_buffer, 4);
 					break;
 		}
 #if  defined(HW_4v0) || defined(HW_4v1)
 			port_pin_set_output_level(STAT_LED,false);
 #endif
 			BLE_TX_INDEX++;
-			if(BLE_TX_INDEX > 3)
+			if(BLE_TX_INDEX > 4)
 				BLE_TX_INDEX = 0;
 
 			BLE_TX_TIME = millis(); // Placed at end of transmit to provide accurate message timing
@@ -586,7 +602,7 @@ int main (void)
 		///////////////////////////////////////////////////////////////////////////////////
 		if(SEND_LIMITS)
 		{
-			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			while(!check_timer_expired(&BLE_TX_TIME, BLE_TX_DELAY*2)){}
 			BLE_TX_TIME = millis();
 
 			ble_write_buffer[0] = 0x41;
@@ -603,7 +619,7 @@ int main (void)
 			ble_write_buffer[11] = mcconf_limits.max_vin;
 			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 12);
 			
-			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			while(!check_timer_expired(&BLE_TX_TIME, BLE_TX_DELAY*2)){}
 			BLE_TX_TIME = millis();
 
 			ble_write_buffer[0] = 0x48;
@@ -619,8 +635,8 @@ int main (void)
 			ble_write_buffer[10] = (mcconf_limits.min_erpm & 0xFF00) >> 8;
 			ble_write_buffer[11] = (mcconf_limits.min_erpm & 0xFF0000) >> 16;
 			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 12);
-
-			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			
+			while(!check_timer_expired(&BLE_TX_TIME, BLE_TX_DELAY*2)){}
 			BLE_TX_TIME = millis();
 
 			ble_write_buffer[0] = 0x4C;
@@ -636,8 +652,8 @@ int main (void)
 			ble_write_buffer[10] = 0x4F;
 			ble_write_buffer[11] = mcconf_limits.temp_fet_end;
 			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 12);
-
-			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			
+			while(!check_timer_expired(&BLE_TX_TIME, BLE_TX_DELAY*2)){}
 			BLE_TX_TIME = millis();
 
 			ble_write_buffer[0] = 0x50;
@@ -661,7 +677,7 @@ int main (void)
 		///////////////////////////////////////////////////////////////////////////////////
 		if(SEND_SENSORS)
 		{
-			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			while(!check_timer_expired(&BLE_TX_TIME, BLE_TX_DELAY*2)){}
 			BLE_TX_TIME = millis();
 
 			ble_write_buffer[0] = 0x61;
@@ -680,7 +696,7 @@ int main (void)
 			ble_write_buffer[13] = ((uint16_t)(err_estimate[light_kalman]) & 0xFF); // Light Sensor estimated error
 			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 14);
 		
-			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			while(!check_timer_expired(&BLE_TX_TIME, BLE_TX_DELAY*2)){}
 			BLE_TX_TIME = millis();
 
 			ble_write_buffer[0] = 0x68;
@@ -708,7 +724,7 @@ int main (void)
 		///////////////////////////////////////////////////////////////////////////////////
 		if(SEND_LED_CHARS)
 		{
-			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			while(!check_timer_expired(&BLE_TX_TIME, BLE_TX_DELAY*2)){}
 			BLE_TX_TIME = millis();
 
 			uint8_t led_mode_switches = ((light_mode << 4) | (HEADLIGHTS << 3) | (SIDELIGHTS << 2) | (LIGHT_CONTROLLED << 1) | IMU_CONTROLED);
@@ -717,7 +733,7 @@ int main (void)
 			ble_write_buffer[0] = 0x31;
 			ble_write_buffer[1] = led_mode_switches; // Current switch states
 			ble_write_buffer[2] = RGB_led_type;
-			// Static
+			// Analog Static
 			ble_write_buffer[3] = 0x32;
 			ble_write_buffer[4] = (uint8_t)((float)Static_RGB.LR / 655.35);
 			ble_write_buffer[5] = (uint8_t)((float)Static_RGB.LG / 655.35);
@@ -725,32 +741,32 @@ int main (void)
 			ble_write_buffer[7] = (uint8_t)((float)Static_RGB.RR / 655.35);
 			ble_write_buffer[8] = (uint8_t)((float)Static_RGB.RG / 655.35);
 			ble_write_buffer[9] = (uint8_t)((float)Static_RGB.RB / 655.35);
-			// Color Cycle
+			// Analog Color Cycle
 			ble_write_buffer[10] = 0x33;
 			ble_write_buffer[11] = (uint8_t)(RateSens[MODE_ANALOG_COLOR_CYCLE] * 100);
 			ble_write_buffer[12] = (uint8_t)(Brightness[MODE_ANALOG_COLOR_CYCLE] * 100);
-			// Compass Cycle
+			// Analog Compass Cycle
 			ble_write_buffer[13] = 0x34;
 			ble_write_buffer[14] = (uint8_t)(Brightness[MODE_ANALOG_COMPASS_CYCLE] * 100);
-			// Throttle Based
+			// Analog Throttle Based
 			ble_write_buffer[15] = 0x35;
 			ble_write_buffer[16] = (uint8_t)(RateSens[MODE_ANALOG_THROTTLE] * 100);
 			ble_write_buffer[17] = (uint8_t)(Brightness[MODE_ANALOG_THROTTLE] * 100);
-			// RPM Based
+			// Analog RPM Based
 			ble_write_buffer[18] = 0x36;
 			ble_write_buffer[19] = (uint8_t)(RateSens[MODE_ANALOG_RPM_CYCLE] * 100);
 			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 20);
 			
-			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			while(!check_timer_expired(&BLE_TX_TIME, BLE_TX_DELAY*2)){}
 			BLE_TX_TIME = millis();
 
-			// X Accel Based
+			// Analog X Accel Based
 			ble_write_buffer[0] = 0x37;
 			ble_write_buffer[1] = (uint8_t)(RateSens[MODE_ANALOG_X_ACCEL] * 100);
-			// Y Accel Based
+			// Analog Y Accel Based
 			ble_write_buffer[2] = 0x38;
 			ble_write_buffer[3] = (uint8_t)(Brightness[MODE_ANALOG_Y_ACCEL] * 100);
-			// Custom
+			// Analog Custom
 			uint8_t color_bright_base = (ColorBase[MODE_ANALOG_CUSTOM] << 4) | BrightBase[MODE_ANALOG_CUSTOM];
 			ble_write_buffer[4] = 0x39;
 			ble_write_buffer[5] = color_bright_base;
@@ -765,37 +781,50 @@ int main (void)
 			ble_write_buffer[14] = (uint8_t)(Brightness[MODE_ANALOG_CUSTOM] * 100);
 			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 15);
 			
-			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			while(!check_timer_expired(&BLE_TX_TIME, BLE_TX_DELAY*2)){}
 			BLE_TX_TIME = millis();
 
-			// Y Accel Based
+			// Digital Static
 			ble_write_buffer[0] = 0x3A;
 			ble_write_buffer[1] = (uint8_t)(Digital_Static_Zoom);
 			ble_write_buffer[2] = (uint8_t)(Digital_Static_Shift);
 			ble_write_buffer[3] = (uint8_t)(Digital_Static_Brightness);
+			// Digital Skittles
 			ble_write_buffer[4] = 0x3B;
 			ble_write_buffer[5] = (uint8_t)(Digital_Skittles_Brightness);
+			// Digital Cycle
 			ble_write_buffer[6] = 0x3C;
 			ble_write_buffer[7] = (uint8_t)(Digital_Cycle_Zoom);
 			ble_write_buffer[8] = (uint8_t)(Digital_Cycle_Rate);
 			ble_write_buffer[9] = (uint8_t)(Digital_Cycle_Brightness);
 			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 10);
 			
-			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			while(!check_timer_expired(&BLE_TX_TIME, BLE_TX_DELAY*2)){}
 			BLE_TX_TIME = millis();
 
+			// Digital Compass
 			ble_write_buffer[0] = 0x3D;
 			ble_write_buffer[1] = (uint8_t)(Digital_Compass_Brightness);
+			// Digital Throttle
 			ble_write_buffer[2] = 0x3E;
 			ble_write_buffer[3] = (uint8_t)(Digital_Throttle_Zoom);
 			ble_write_buffer[4] = (uint8_t)(Digital_Throttle_Shift);
 			ble_write_buffer[5] = (uint8_t)(Digital_Throttle_Sens);
 			ble_write_buffer[6] = (uint8_t)(Digital_Throttle_Brightness);
+			// Digital RPM
 			ble_write_buffer[7] = 0x3F;
 			ble_write_buffer[8] = (uint8_t)(Digital_RPM_Zoom);
 			ble_write_buffer[9] = (uint8_t)(Digital_RPM_Rate);
 			ble_write_buffer[10] = (uint8_t)(Digital_RPM_Brightness);
-			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 11);
+			// Analog Shuffled Modes
+			ble_write_buffer[11] = 0x40;
+			ble_write_buffer[12] = SHUFFLE_ENABLED;
+			ble_write_buffer[13] = (shuffled_analog_modes & 0xFF);
+			ble_write_buffer[14] = (shuffled_analog_modes & 0xFF00) >> 8;
+			// Digital Shuffled Modes
+			ble_write_buffer[15] = (shuffled_digital_modes & 0xFF);
+			ble_write_buffer[16] = (shuffled_digital_modes & 0xFF00) >> 8;
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 17);
 
 			SEND_LED_CHARS = 0;
 			SEND_CONTINUOUS = 1;
@@ -806,7 +835,7 @@ int main (void)
 		///////////////////////////////////////////////////////////////////////////////////
 		if(SEND_ORIENTAION_CONFIG)
 		{
-			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			while(!check_timer_expired(&BLE_TX_TIME, BLE_TX_DELAY*2)){}
 			BLE_TX_TIME = millis();
 
 			// Global LED Settings
@@ -825,7 +854,7 @@ int main (void)
 		///////////////////////////////////////////////////////////////////////////////////
 		if(SEND_CONTROLS_CONFIG)
 		{
-			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			while(!check_timer_expired(&BLE_TX_TIME, BLE_TX_DELAY*2)){}
 			BLE_TX_TIME = millis();
 
 			// Global LED Settings
@@ -850,7 +879,7 @@ int main (void)
 		///////////////////////////////////////////////////////////////////////////////////
 		if(SEND_REMOTE_CONFIG)
 		{
-			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			while(!check_timer_expired(&BLE_TX_TIME, BLE_TX_DELAY*2)){}
 			BLE_TX_TIME = millis();
 
 			// Global LED Settings
@@ -868,7 +897,7 @@ int main (void)
 		///////////////////////////////////////////////////////////////////////////////////
 		if(SEND_ESC_CONFIG)
 		{
-			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			while(!check_timer_expired(&BLE_TX_TIME, BLE_TX_DELAY*2)){}
 			BLE_TX_TIME = millis();
 
 			// Global LED Settings
@@ -886,7 +915,7 @@ int main (void)
 		///////////////////////////////////////////////////////////////////////////////////
 		if(SEND_Lights_CONFIG)
 		{
-			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			while(!check_timer_expired(&BLE_TX_TIME, BLE_TX_DELAY*2)){}
 			BLE_TX_TIME = millis();
 
 			// Global LED Settings
@@ -894,7 +923,7 @@ int main (void)
 			ble_write_buffer[1] = (uint8_t)(RGB_led_type << 4) | brake_light_mode;
 			ble_write_buffer[2] = (uint8_t)(deadzone);
 			ble_write_buffer[3] = (uint8_t)(led_num);
-			ble_write_buffer[4] = (uint8_t)(SYNC_RGB << 7 | BRAKE_ALWAYS_ON << 6 | DEFAULT_STATE << 5 | BRIGHTS_ENABLED << 4);
+			ble_write_buffer[4] = (uint8_t)(SYNC_RGB << 7 | BRAKE_ALWAYS_ON << 6 | DEFAULT_STATE << 5 | BRIGHTS_ENABLED << 4 | STANDBY_ENABLED << 3 | SHUFFLE_ENABLED << 2);
 			ble_write_buffer[5] = (uint8_t)(lowbeam_level);
 			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 6);
 
@@ -907,7 +936,7 @@ int main (void)
 		///////////////////////////////////////////////////////////////////////////////////
 		if(SEND_TTL_FW_HW)
 		{
-			while((millis()-BLE_TX_TIME) < BLE_TX_DELAY*2){}
+			while(!check_timer_expired(&BLE_TX_TIME, BLE_TX_DELAY*2)){}
 			BLE_TX_TIME = millis();
 
 			// Global LED Settings
@@ -919,6 +948,120 @@ int main (void)
 			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 5);
 
 			SEND_TTL_FW_HW = 0;
+			SEND_CONTINUOUS = 1;
+		}
+
+
+		//////////////////////////   Handle Output Test request   /////////////////////////
+		///////////////////////////////////////////////////////////////////////////////////
+		if(TEST_TTL_OUTPUTS)
+		{
+			uint32_t timer = millis();
+			setLeftRGB(0,0,0);
+			setRightRGB(0,0,0);
+			setRed(0);
+			setWhite(0);
+			setAux(false);
+			for(int i = 0; i < 0xFFFF; i+=256){
+				setLeftRGB(i,0,0);
+				while(!check_timer_expired(&timer, 3)){}
+				timer = millis();
+			}
+		
+			while(!check_timer_expired(&timer, 500)){}
+			timer = millis();
+
+			for(int i = 0; i < 0xFFFF; i+=256){
+				setLeftRGB(0,i,0);
+				while(!check_timer_expired(&timer, 3)){}
+				timer = millis();
+			}
+		
+			while(!check_timer_expired(&timer, 500)){}
+			timer = millis();
+
+			for(int i = 0; i < 0xFFFF; i+=256){
+				setLeftRGB(0,0,i);
+				while(!check_timer_expired(&timer, 3)){}
+				timer = millis();
+			}
+		
+			while(!check_timer_expired(&timer, 500)){}
+			timer = millis();
+			setLeftRGB(0,0,0);
+
+			for(int i = 0; i < 0xFFFF; i+=256){
+				setRightRGB(i,0,0);
+				while(!check_timer_expired(&timer, 3)){}
+				timer = millis();
+			}
+		
+			while(!check_timer_expired(&timer, 500)){}
+			timer = millis();
+
+			for(int i = 0; i < 0xFFFF; i+=256){
+				setRightRGB(0,i,0);
+				while(!check_timer_expired(&timer, 3)){}
+				timer = millis();
+			}
+		
+			while(!check_timer_expired(&timer, 500)){}
+			timer = millis();
+
+			for(int i = 0; i < 0xFFFF; i+=256){
+				setRightRGB(0,0,i);
+				while(!check_timer_expired(&timer, 3)){}
+				timer = millis();
+			}
+		
+			while(!check_timer_expired(&timer, 500)){}
+			timer = millis();
+			setRightRGB(0,0,0);
+
+			for(int i = 0; i < 0xFFFF; i+=256){
+				setRed(i);
+				while(!check_timer_expired(&timer, 3)){}
+				timer = millis();
+			}
+
+			while(!check_timer_expired(&timer, 500)){}
+			timer = millis();
+			setRed(0);
+
+			for(int i = 0; i < 0xFFFF; i+=256){
+				setWhite(i);
+				while(!check_timer_expired(&timer, 3)){}
+				timer = millis();
+			}
+	
+			while(!check_timer_expired(&timer, 500)){}
+			timer = millis();
+
+			setWhite(0);
+			setAux(true);
+	
+			while(!check_timer_expired(&timer, 1500)){}
+			timer = millis();
+			setAux(0);
+
+			TEST_TTL_OUTPUTS = 0;
+			SEND_CONTINUOUS = 1;
+		}
+
+
+		////////////////////   Handle ESC Auto Detect Setting Request   ///////////////////
+		///////////////////////////////////////////////////////////////////////////////////
+		if(SEND_ESC_DETECTION)
+		{
+			while(!check_timer_expired(&BLE_TX_TIME, BLE_TX_DELAY*2)){}
+			BLE_TX_TIME = millis();
+
+			// Global LED Settings
+			ble_write_buffer[0] = BLE_ESC_AUTO_DETECT;//0x78;
+			ble_write_buffer[1] = (uint8_t)(AUTO_DETECT_ESC);
+			usart_write_buffer_wait(&ble_usart, ble_write_buffer, 2);
+
+			SEND_ESC_DETECTION = 0;
 			SEND_CONTINUOUS = 1;
 		}
 		
@@ -935,64 +1078,8 @@ int main (void)
 		
 		//////////////////////////////////   LED MODES   //////////////////////////////////
 		///////////////////////////////////////////////////////////////////////////////////
-		if(sensorControl() && LIGHTS_ON){
-			if(SIDELIGHTS && lightControlSide()){
-				if(RGB_led_type == RGB_ANALOG){
-					AnalogSideLights();
-				}else if(RGB_led_type == RGB_DIGITAL_APA102 || RGB_led_type == RGB_DIGITAL_SK9822) { // Digital LED Functions
-					DigitalSideLights();
-				} else{
-					//No RGB LEDs
-				}
-			}
-			else {
-				if(!TurnSignalOn) {
-					if(RGB_led_type == RGB_ANALOG){
-						setLeftRGB(0, 0, 0);
-						setRightRGB(0, 0, 0);
-					}
-					else{
-						if(!DIGITAL_OFF){
-							for(uint16_t i = 0; i < led_num; i++)
-							{
-								L_SPI_send_buf[(i*4)+4] = R_SPI_send_buf[(i*4)+4] = (0b11100000 | 0);
-								L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = 0;
-								L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = 0;
-								L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = 0;
-							}
-							L_APA_write(led_num);
-							R_APA_write(led_num);
-							DIGITAL_OFF = true;
-						}
-					}
-				}
-			}
-
-
-			/////////////// Control the head and tail lights //////////////////
-			HeadLight();
-			
-		} else {
-			setWhite(0);
-			if(RGB_led_type == RGB_ANALOG){
-				setLeftRGB(0,0,0);
-				setRightRGB(0,0,0);
-			}
-			else{
-				if(!DIGITAL_OFF){
-					for(uint16_t i = 0; i < led_num; i++)
-					{
-						L_SPI_send_buf[(i*4)+4] = R_SPI_send_buf[(i*4)+4] = (0b11100000 | 0);
-						L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = 0;
-						L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = 0;
-						L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = 0;
-					}
-					L_APA_write(led_num);
-					R_APA_write(led_num);
-					DIGITAL_OFF = true;
-				}
-			}
-		}
+		SideLights();
+		HeadLight();
 		BrakeLight();
 	}
 }

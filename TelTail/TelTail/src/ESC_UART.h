@@ -24,6 +24,8 @@
 #include "ESC_Vars.h"
 #include <math.h>
 
+#define VESC_UART_PERIOD 10
+
 struct chuck_data{
 	int8_t js_x;
 	int8_t js_y;
@@ -105,13 +107,23 @@ bool READ_VESC_VALS = false;
 bool READ_VESC_FW = false;
 bool VESC_PACKET_RECIEVED = false;
 bool ESC_UART_CONFIGED = false;
+bool ESC_UART_DETECTED = false;
 bool ESC_UART_PIN_CONFIG = false;
+bool AUTO_DETECT_ESC = true;
 
 ///////////   ESC Communication Variables   ///////////
 ////////////////////////////////////////////////////////
 uint8_t configured_comms = COMMS_NONE;
 uint32_t ESC_noise_timer = 0;
 
+// Set the ESC RX/TX pins according to HW version
+#define ESC_UART_RXTX_1 PIN_PA16
+#ifdef HW_3v4
+#define ESC_UART_RXTX_2 PIN_PA17
+#endif
+#if  defined(HW_4v0)|| defined(HW_4v1)
+#define ESC_UART_RXTX_2 PIN_PA18
+#endif
 
 void configure_vesc_usart(void);
 void vesc_usart_read_callback(struct usart_module *const usart_module);
@@ -132,6 +144,7 @@ struct uart_packet recieve_packet(void);
 bool CHECK_BUFFER(uint8_t *buf);
 void read_vesc_packet(void);
 void detect_esc_baud_pins(void);
+void detect_esc_uart_connected(void);
 bool CHECK_FOR_NOISE(struct usart_module *const module, uint8_t buf[MAX_PAYLOAD_LEN+6], uint16_t max_size, uint32_t *noise_timer);
 
 float buffer_get_float32_auto(uint8_t *buffer, int8_t index);
@@ -193,7 +206,7 @@ enum VESC_UART_BYTES{
 
 uint8_t vesc_tx_buff[MAX_PAYLOAD_LEN+6];
 void send_packet(struct uart_packet send_pak){
-	if((millis()-vesc_usart_time) > vesc_usart_timeout)
+	if(check_timer_expired(&vesc_usart_time, vesc_usart_timeout))
 		HOLD_FOR_REPLY = false;
 
 	send_pak.stop = 0x03;
@@ -475,49 +488,53 @@ void vesc_get_imu(){
 
 void vesc_read_all(){
 	static uint8_t read_index = 0;
-	if((millis()-vesc_usart_time) > vesc_usart_timeout)
+	if(HOLD_FOR_REPLY && check_timer_expired(&vesc_usart_time, vesc_usart_timeout))
 		HOLD_FOR_REPLY = false;
-
-	switch(read_index){
-		case 0:
-		if(!READ_VESC_PWM){
-			read_index++;
-		} else if(!HOLD_FOR_REPLY){
-			read_index++;
-			vesc_get_pwm();
+	
+	if(!HOLD_FOR_REPLY){
+		if(check_timer_expired(&vesc_usart_time, VESC_UART_PERIOD)){
+			switch(read_index){
+				case 0:
+				if(!READ_VESC_PWM){
+					read_index++;
+				} else {
+					read_index++;
+					vesc_get_pwm();
+				}
+				break;
+				case 1:
+				if(!READ_VESC_FW){
+					read_index++;
+				} else {
+					read_index++;
+					vesc_get_fw_version();
+				}
+				break;
+				case 2:
+				if(!READ_VESC_VALS){
+					read_index++;
+				} else {
+					read_index++;
+					vesc_get_vals();
+				}
+				break;
+				case 3:
+				if(!READ_VESC_CHUCK){
+					read_index++;
+				} else {
+					read_index++;
+					vesc_get_chuck();
+				}
+				case 4:
+				if(!SEND_VESC_CHUCK){
+					read_index=0;
+				} else {
+					read_index=0;
+					vesc_set_chuck();
+				}
+				break;
+			}
 		}
-		break;
-		case 1:
-		if(!READ_VESC_FW){
-			read_index++;
-		} else if(!HOLD_FOR_REPLY){
-			read_index++;
-			vesc_get_fw_version();
-		}
-		break;
-		case 2:
-		if(!READ_VESC_VALS){
-			read_index++;
-		} else if(!HOLD_FOR_REPLY){
-			read_index++;
-			vesc_get_vals();
-		}
-		break;
-		case 3:
-		if(!READ_VESC_CHUCK){
-			read_index++;
-		} else if(!HOLD_FOR_REPLY){
-			read_index++;
-			vesc_get_chuck();
-		}
-		case 4:
-		if(!SEND_VESC_CHUCK){
-			read_index=0;
-		} else if(!HOLD_FOR_REPLY){
-			read_index=0;
-			vesc_set_chuck();
-		}
-		break;
 	}
 	
 	READ_VESC_PWM = false;
@@ -540,7 +557,7 @@ void detect_vesc_firmware(){
 			esc_fw = FW_3v6;
 		} else if((latest_vesc_vals.FW_VERSION_MAJOR == 3 && latest_vesc_vals.FW_VERSION_MINOR >= 7 && latest_vesc_vals.FW_VERSION_MINOR <= 67)||
 				(latest_vesc_vals.FW_VERSION_MAJOR == 4 && latest_vesc_vals.FW_VERSION_MINOR >= 0 && latest_vesc_vals.FW_VERSION_MINOR <= 2)||
-				(latest_vesc_vals.FW_VERSION_MAJOR == 5 && latest_vesc_vals.FW_VERSION_MINOR >= 0 && latest_vesc_vals.FW_VERSION_MINOR <= 1)){ // >= 3.7 && <= 5.1
+				(latest_vesc_vals.FW_VERSION_MAJOR == 5 && latest_vesc_vals.FW_VERSION_MINOR >= 0 && latest_vesc_vals.FW_VERSION_MINOR <= 2)){ // >= 3.7 && <= 5.1
 			esc_fw = FW_3v7;
 		} else if(latest_vesc_vals.FW_VERSION_MAJOR == 23){ // Unity
 			esc_fw = FW_UNITY;
@@ -590,7 +607,7 @@ void detect_vesc_firmware(){
 			GET_MCCONF_DUTY_MIN = 75;
 			GET_MCCONF_DUTY_MAX = 79;
 		}
-		if(esc_fw == FW_3v7 || esc_fw == FW_UNITY || esc_fw == FW_ACKMANIAC){ // >= 3.7 && <= 5.1 || AckManiac || Unity
+		if(esc_fw == FW_3v7 || esc_fw == FW_UNITY || esc_fw == FW_ACKMANIAC){ // >= 3.7 && <= 5.2 || AckManiac || Unity
 			COMM_FW_VERSION = 0;
 			COMM_GET_VALUES = 4;
 			COMM_GET_MCCONF = 14;
@@ -620,7 +637,7 @@ void detect_vesc_firmware(){
 			GET_MCCONF_DUTY_MAX = 86;
 		}
 		
-		if(esc_fw == FW_3v7 || esc_fw == FW_ACKMANIAC){ // >= 3.7 && <= 5.1 || AckManiac
+		if(esc_fw == FW_3v7 || esc_fw == FW_ACKMANIAC){ // >= 3.7 && <= 5.2 || AckManiac
 			GET_VALUES_FET_TEMP = 1;
 			GET_VALUES_MTR_CURR = 5;
 			GET_VALUES_IN_CURR = 9;
@@ -675,7 +692,7 @@ void read_vesc_packet(void){
 		// Check if the message was corrupted
 		uint16_t crc_check = crc16(vesc_revieve_packet.payload, packet_len);
 		if(crc_check != (uint16_t)((vesc_revieve_packet.crc[0]<<8)|vesc_revieve_packet.crc[1])){
-			ERROR_LEDs(0);
+			//ERROR_LEDs(ERROR_TEAL);
 			VESC_PACKET_RECIEVED = false; // dont handle the packet if it was
 		}
 		
@@ -692,7 +709,7 @@ void read_vesc_packet(void){
 		usart_abort_job(&vesc_usart, USART_TRANSCEIVER_RX);
 		memset(vesc_USART_read_buffer, 0, MAX_PAYLOAD_LEN+6);
 		uint32_t temp_timer = millis();
-		while(millis() - temp_timer < 10){}
+		while(!check_timer_expired(&temp_timer, 10)){}
 		// Start listening to the BLE UART
 		usart_read_buffer_job(&vesc_usart, vesc_USART_read_buffer, MAX_PAYLOAD_LEN+6);
 	}
@@ -702,7 +719,7 @@ void read_vesc_packet(void){
 	}
 }
 
-detect_esc_baud_pins(void){
+void detect_esc_baud_pins(void){
 	static uint32_t wait_time = 0;
 	static uint32_t send_delay = 15;
 	static uint32_t recieve_delay = 50;
@@ -715,8 +732,8 @@ detect_esc_baud_pins(void){
 			wait_time = millis();
 			DISABLE_UART = false;
 		}
-		check_time(&wait_time);
-		if(!CONFIG_PACKET_SENT && (millis()-wait_time) > send_delay){ // Pause 5ms
+
+		if(!CONFIG_PACKET_SENT && check_timer_expired(&wait_time, send_delay)){ // Pause 5ms
 
 			// Configure the VESC UART with a new buad rate
 			UART_baud++;
@@ -740,7 +757,7 @@ detect_esc_baud_pins(void){
 
 			wait_time = millis();
 		}
-		else if(CONFIG_PACKET_SENT && (millis()-wait_time) > recieve_delay){
+		else if(CONFIG_PACKET_SENT && check_timer_expired(&wait_time, recieve_delay)){
 
 			//port_pin_set_output_level(STATUS_LED, false);
 
@@ -766,7 +783,7 @@ bool CHECK_FOR_NOISE(struct usart_module *const module, uint8_t buf[MAX_PAYLOAD_
 	if(buf[0] != 0x02 && buf[0] != 0x03 && buf[0] != 0xA5 && module->remaining_rx_buffer_length != max_size){
 		return true;
 	}else if(buf[0] == 0x02 || buf[0] == 0x03 || buf[0] == 0xA5){
-		if((millis() - *noise_timer) > 500){
+		if(check_timer_expired(noise_timer,500)){
 			return true;
 		}else{
 			return false;
@@ -774,6 +791,13 @@ bool CHECK_FOR_NOISE(struct usart_module *const module, uint8_t buf[MAX_PAYLOAD_
 	}else{
 		*noise_timer = millis();
 		return false;
+	}
+}
+
+
+void detect_esc_uart_connected(void){
+	if(port_pin_get_input_level(ESC_UART_RXTX_1) && port_pin_get_input_level(ESC_UART_RXTX_2)){
+		ESC_UART_DETECTED = true;
 	}
 }
 #endif /* CRC_H_ */

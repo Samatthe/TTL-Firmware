@@ -23,7 +23,7 @@
 #include "LED_Vars.h"
 #include "Timing.h"
 #include "APA102.h"
-#include "SK9822.h"
+#include "WS2815.h"
 #include "ESC_Vars.h"
 #include "Remote_Vars.h"
 #include "IMU_Vars.h"
@@ -44,11 +44,17 @@ void setAux(bool aux);
 struct RGB_Vals setCycleColor(uint16_t _upColor, uint16_t _downColor, int _cycle);
 void setCycleColorSingle(uint16_t upColor, uint16_t downColor, int cycle, bool left);
 void setConstBases(void);
-void ERROR_LEDs(uint8_t error_type);
+void ERROR_LEDs(uint8_t error_type, uint8_t duration);
 void TurnSignal(bool direction);
 void BlinkTail(uint16_t brightness, float rate);
 void AnalogSideLights(void);
 void DigitalSideLights(void);
+void testLEDs(void);
+bool is_standby_active(void);
+void turn_off_side_lights(void);
+void SideLights(void);
+void HeadLight(void);
+void BrakeLight(void);
 
 void getLightSens(uint16_t* light_val);
 char sensorControl(void);
@@ -56,6 +62,11 @@ char lightControlHead(void);
 char lightControlSide(void);
 void setDigitalHue(uint16_t start, uint8_t zoom, uint16_t offset, uint8_t hue_brightness, bool reverse_direction);
 void setDigitalLEDHue(uint16_t pos, uint8_t zoom, uint8_t hue_brightness, uint8_t led);
+void L_digital_write(uint16_t led_count);
+void R_digital_write(uint16_t led_count);
+
+void set_mode_shuffle_state(uint16_t* shuffled_modes, bool state, uint16_t mode);
+void shuffle_light_modes(void);
 
 
 
@@ -238,8 +249,21 @@ void setConstBases(){
 
 // Flash the side LEDs red until restart
 // 0: Red, 1: Blue, 2:Green, 3: Teal, 4: Yellow, 5:Purple
-void ERROR_LEDs(uint8_t error_type){
-	uint32_t timer = 0;
+void ERROR_LEDs(uint8_t error_type, uint8_t duration){
+	uint32_t error_timer = millis();
+	uint32_t flash_timer = millis();
+	uint32_t dur;
+	switch(duration){
+		case SHORT_ERROR:
+			dur = 2000;
+			break;
+		case LONG_ERROR:
+			dur = 5000;
+			break;
+		case PERMINENT_ERROR:
+			dur = UINT32_MAX;
+			break;
+	}
 
 	uint16_t tempR = 0, tempG = 0, tempB = 0;
 	if(error_type == 0 || error_type == 4  || error_type == 5)
@@ -249,34 +273,28 @@ void ERROR_LEDs(uint8_t error_type){
 	if(error_type == 1 || error_type == 3 || error_type == 5)
 		tempB = 0xFFFF;
 
-	while(1){
-		if(RGB_led_type == RGB_ANALOG){
+	while(!check_timer_expired(&error_timer, dur)){
+		if(configured_RGB_led_type == RGB_ANALOG){
 			setLeftRGB(0,0,0);
 			setRightRGB(0,0,0);
 		} else {
 			setDigitalHue(0,10,0,0,0);
 			set_left_gnd();
 			set_right_gnd();
-			L_APA_write(led_num);
-			R_APA_write(led_num);
-	}
+			L_digital_write(led_num);
+			L_digital_write(led_num);
+		}
 		
-		setRed(0);
-		setWhite(0);
+		//setRed(0);
+		//setWhite(0);
 #if  defined(HW_4v0) || defined(HW_4v1)
 		port_pin_set_output_level(STAT_LED, false);
 #endif
 
-		while(millis() - timer < 1000) {
-			///if(RGB_led_type != RGB_ANALOG) {
-			//	L_APA_write(MAX_LEDCOUNT);
-			//	R_APA_write(MAX_LEDCOUNT);
-			//}
-			check_time(&timer);
-		}
-		timer = millis();
+		while(!check_timer_expired(&flash_timer, 500)) {}
+		flash_timer = millis();
 		
-		if(RGB_led_type == RGB_ANALOG){
+		if(configured_RGB_led_type == RGB_ANALOG){
 			setLeftRGB(tempR,tempG,tempB);
 			setRightRGB(tempR,tempG,tempB);
 		} else {
@@ -302,20 +320,18 @@ void ERROR_LEDs(uint8_t error_type){
 	}
 		set_left_gnd();
 		set_right_gnd();
-		L_APA_write(led_num);
-		R_APA_write(led_num);
+		L_digital_write(led_num);
+		R_digital_write(led_num);
 		}
 		
-		setRed(0xFFFF);
-		setWhite(0xFFFF);
+		//setRed(0xFFFF);
+		//setWhite(0xFFFF);
 #if  defined(HW_4v0) || defined(HW_4v1)
 		port_pin_set_output_level(STAT_LED, true);
 #endif
 
-		while(millis() - timer < 250) {
-			check_time(&timer);
-		}
-		timer = millis();
+		while(!check_timer_expired(&flash_timer, 250)) {}
+		flash_timer = millis();
 	}
 }
 
@@ -324,11 +340,10 @@ uint32_t turnTimer = 0;
 uint16_t turnOutput = 0;
 void TurnSignal(bool direction){
 
-	check_time(&turnTimer);
-	if(turnOutput == 0x0 && (millis() - turnTimer >= TURN_OFF_TIME)){
+	if(turnOutput == 0x0 && check_timer_expired(&turnTimer, TURN_OFF_TIME)){
 		turnOutput = 0xFFFF;
 		turnTimer = millis();
-	} else if(turnOutput == 0xFFFF && (millis() - turnTimer >= TURN_ON_TIME)){
+	} else if(turnOutput == 0xFFFF && check_timer_expired(&turnTimer, TURN_ON_TIME)){
 		turnOutput = 0;
 		turnTimer = millis();
 	}
@@ -346,20 +361,19 @@ void TurnSignal(bool direction){
 //rate: 1-10
 uint32_t blink_off_time = 0;
 uint32_t blink_on_time = 0;
-void BlinkTail(uint16_t brightness, float rate){
+void BlinkTail(uint16_t tail_brightness, float rate){
 	blink_off_time = 300/(rate/3);
 	blink_on_time = 100/(rate/3);
 	static bool tail_on = false;
 	static uint32_t timer = 0;
-	check_time(&timer);
-	if((tail_on && (millis()-timer) > blink_on_time) ||
-		(!tail_on && (millis()-timer) > blink_off_time)){
+	if((tail_on && check_timer_expired(&timer, blink_on_time)) ||
+		(!tail_on && check_timer_expired(&timer, blink_off_time))){
 		tail_on = !tail_on;
 		timer = millis();
 	}
 
 	if(tail_on){
-		setRed(brightness);
+		setRed(tail_brightness);
 	}else{
 		setRed(0);
 	}
@@ -501,12 +515,11 @@ void AnalogSideLights(){
 		}
 		case BRIGHT_STROBE:
 		{
-			check_time(&strobe_time);
-			if(output_brightness == 0.0 && (millis()-strobe_time > strobe_off_dur)){
+			if(output_brightness == 0.0 && check_timer_expired(&strobe_time, strobe_off_dur)){
 				output_brightness = 1.0;
 				strobe_time = millis();
 			}
-			else if(output_brightness == 1.0 && (millis()-strobe_time > strobe_on_dur)){
+			else if(output_brightness == 1.0 && check_timer_expired(&strobe_time, strobe_on_dur)){
 				output_brightness = 0.0;
 				strobe_time = millis();
 			}
@@ -709,8 +722,7 @@ void DigitalSideLights(){
 	set_left_gnd();
 	set_right_gnd();
 
-	check_time(&digital_refresh_time);
-	if((millis()-digital_refresh_time) > (1000/digital_refresh_rate)){
+	if(check_timer_expired(&digital_refresh_time, (1000/digital_refresh_rate))){
 		if(led_num <= MAX_LEDCOUNT && led_num > 0){
 			// Set the color frames
 			switch(light_mode){
@@ -800,7 +812,7 @@ void DigitalSideLights(){
 					// old colors get pushed back at a rate set by the RPM
 					// brightness is set by slider
 					static uint32_t shift_rate_timer = 0;
-					if((millis()-shift_rate_timer) >= (100-(((float)latest_vesc_vals.rpm/mcconf_limits.max_erpm)*100))){
+					if(check_timer_expired(&shift_rate_timer, (100-(((float)latest_vesc_vals.rpm/mcconf_limits.max_erpm)*100)))){
 						shift_rate_timer = millis();
 						memmove(L_SPI_send_buf+8,L_SPI_send_buf+4,(led_num-1)*4);
 						memmove(R_SPI_send_buf+8,R_SPI_send_buf+4,(led_num-1)*4);
@@ -865,7 +877,7 @@ void DigitalSideLights(){
 				case MODE_DIGITAL_COMPASS_SNAKE:
 				{
 					static uint32_t shift_rate_timer = 0;
-					if((millis()-shift_rate_timer) >= 10){
+					if(check_timer_expired(&shift_rate_timer, 10)){
 						shift_rate_timer = millis();
 						memmove(L_SPI_send_buf+8,L_SPI_send_buf+4,(led_num-1)*4);
 						memmove(R_SPI_send_buf+8,R_SPI_send_buf+4,(led_num-1)*4);
@@ -895,8 +907,8 @@ void DigitalSideLights(){
 				}
 			}
 		
-			L_APA_write(led_num);
-			R_APA_write(led_num);
+			L_digital_write(led_num);
+			R_digital_write(led_num);
 
 			DIGITAL_OFF = false;
 		}
@@ -905,7 +917,7 @@ void DigitalSideLights(){
 }
 
 void BrakeLight(){
-	if((HEADLIGHTS && lightControlHead() && LIGHTS_ON) | BRAKE_ALWAYS_ON){
+	if(((HEADLIGHTS && lightControlHead() && LIGHTS_ON) | (BRAKE_ALWAYS_ON)) && sensorControl() && !is_standby_active()){
 		float temp_y = remote_y;
 		float brake_temp;
 
@@ -955,10 +967,22 @@ void BrakeLight(){
 void HeadLight(){
 	static uint32_t brights_timer = 0;
 	
-	if(HEADLIGHTS && lightControlHead()){
+	if(HEADLIGHTS && lightControlHead() && sensorControl() && LIGHTS_ON && !is_standby_active()){
 		if(BRIGHTS_ENABLED){
-			check_time(&brights_timer);
-			if(BRIGHTS && (millis()-brights_timer > BRIGHTS_TIMEOUT)){
+			if(BRIGHTS && IMU_temp > 60.0){
+				setWhite(0xFFFF*((float)lowbeam_level/100));
+				brights_timer = millis();
+				while(!check_timer_expired(&brights_timer,500)){}
+				setWhite(0xFFFF); // 100%
+				brights_timer = millis();
+				while(!check_timer_expired(&brights_timer,1000)){}
+				setWhite(0xFFFF*((float)lowbeam_level/100));
+				brights_timer = millis();
+				while(!check_timer_expired(&brights_timer,500)){}
+				setWhite(0xFFFF); // 100%
+				brights_timer = millis();
+				while(!check_timer_expired(&brights_timer,1000)){}
+				setWhite(0xFFFF*((float)lowbeam_level/100));
 				BRIGHTS = false;
 			}
 
@@ -973,6 +997,25 @@ void HeadLight(){
 		}
 	} else {
 		setWhite(0);
+	}
+}
+
+void SideLights(void){
+	if(sensorControl() && LIGHTS_ON && SIDELIGHTS && lightControlSide() && !is_standby_active()){
+		if(SHUFFLE_ENABLED){
+			shuffle_light_modes();
+		}
+		if(RGB_led_type == RGB_ANALOG){
+			AnalogSideLights();
+		}else if(RGB_led_type == RGB_DIGITAL_APA102){// || RGB_led_type == RGB_DIGITAL_WS2815) { // Digital LED Functions
+			DigitalSideLights();
+		} else{
+			//No RGB LEDs
+		}
+	} else {
+		if(!TurnSignalOn) {
+			turn_off_side_lights();
+		}
 	}
 }
 
@@ -1098,6 +1141,106 @@ void setDigitalLEDHue(uint16_t pos, uint8_t zoom, uint8_t hue_brightness, uint8_
 		L_SPI_send_buf[(led*4)+5] = R_SPI_send_buf[(led*4)+5] = 255-(x%(255*zoom))/zoom;
 		L_SPI_send_buf[(led*4)+6] = R_SPI_send_buf[(led*4)+6] = (x%(255*zoom))/zoom;
 		L_SPI_send_buf[(led*4)+7] = R_SPI_send_buf[(led*4)+7] = 0;
+	}
+}
+
+void L_digital_write(uint16_t led_count){
+	if(RGB_led_type == RGB_DIGITAL_APA102){
+		L_APA_write(led_count);
+	}/*else if(RGB_led_type == RGB_DIGITAL_WS2815){
+		L_WS_write(led_count);
+	}*/
+}
+
+void R_digital_write(uint16_t led_count){
+	if(RGB_led_type == RGB_DIGITAL_APA102){
+		R_APA_write(led_count);
+	}/*else if(RGB_led_type == RGB_DIGITAL_WS2815){
+		R_WS_write(led_count);
+	}*/
+}
+
+void testLEDs(void){
+	while(1){
+
+	}
+}
+
+#define STANDBY_LEAVE_DELAY 1500
+#define STANDBY_ENTER_DELAY 3000
+#define STANDBY_RPM_LIMIT 200
+bool is_standby_active(void){
+	static uint32_t standby_timer = 0;
+	static standby_active = false;
+	
+	if(STANDBY_ENABLED){
+		if((standby_active && latest_vesc_vals.rpm < STANDBY_RPM_LIMIT) || (!standby_active && latest_vesc_vals.rpm > STANDBY_RPM_LIMIT)){
+			standby_timer = millis();
+		}
+
+		if(!standby_active && check_timer_expired(&standby_timer, STANDBY_ENTER_DELAY)){
+			standby_active = true;
+		} else if(standby_active && check_timer_expired(&standby_timer, STANDBY_LEAVE_DELAY)){
+			standby_active = false;
+		}
+	} else {
+		standby_active = false;
+	}
+	return standby_active;
+}
+
+
+void turn_off_side_lights(void){
+	if(RGB_led_type == RGB_ANALOG){
+		setLeftRGB(0, 0, 0);
+		setRightRGB(0, 0, 0);
+	} else if(RGB_led_type == RGB_DIGITAL_APA102){// || RGB_led_type == RGB_DIGITAL_WS2815) {
+		if(!DIGITAL_OFF){
+			for(uint16_t i = 0; i < led_num; i++)
+			{
+				L_SPI_send_buf[(i*4)+4] = R_SPI_send_buf[(i*4)+4] = (0b11100000 | 0);
+				L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = 0;
+				L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = 0;
+				L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = 0;
+			}
+			L_digital_write(led_num);
+			R_digital_write(led_num);
+			DIGITAL_OFF = true;
+		}
+	} else {
+
+	}
+}
+
+void set_mode_shuffle_state(uint16_t* shuffled_modes, bool state, uint16_t mode){
+	if(state){
+		*shuffled_modes |= (0x0001 << mode);
+	} else{
+		*shuffled_modes &= (0x0001 << mode)^0xFFFF;
+	}
+}
+
+void shuffle_light_modes(void){
+	static long shuffle_timer = 0;
+	if(check_timer_expired(&shuffle_timer, 5000)){
+		int temp_mode = light_mode;
+		uint16_t temp_shuffle_bits;
+		uint8_t same_index = 0;
+		if(RGB_led_type == RGB_ANALOG){
+			temp_shuffle_bits = shuffled_analog_modes;
+		} else {
+			temp_shuffle_bits = shuffled_digital_modes;
+		}
+		while(temp_mode == light_mode || !((0x1 << light_mode)&temp_shuffle_bits)) {
+			light_mode = (rand() % light_modes);
+			if(temp_mode == light_mode){
+				same_index++;
+			}
+			if(same_index > 2){
+				break;
+			}
+		}
+		shuffle_timer = millis();
 	}
 }
 #endif

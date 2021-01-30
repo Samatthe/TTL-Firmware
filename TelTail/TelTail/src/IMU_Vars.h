@@ -1,12 +1,61 @@
 /*
- * IMU_Vars.h
- *
- * Created: 11/15/2019 2:19:04 PM
- *  Author: NEO
- */ 
+	Copyright 2019 Matthew Sauve	mattsauve@solidcircuits.net
+
+	This file is part of the TTL firmware.
+
+	The TTL firmware is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The TTL firmware is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
 
 #ifndef IMU_VARS_H
 #define IMU_VARS_H
+
+enum lsm9ds1_axis {
+	X_AXIS,
+	Y_AXIS,
+	Z_AXIS,
+	ALL_AXIS
+};
+
+enum orientation{
+	ORIENT_UP = 1,
+	ORIENT_DOWN,
+	ORIENT_LEFT,
+	ORIENT_RIGHT,
+	ORIENT_REAR,
+	ORIENT_FRONT
+};
+
+struct IMUSettings settings;
+
+// We'll store the gyro, accel, and magnetometer readings in a series of
+// public class variables. Each sensor gets three variables -- one for each
+// axis. Call readGyro(), readAccel(), and readMag() first, before using
+// these variables!
+// These values are the RAW signed 16-bit readings from the sensors.
+int16_t gx = 0, gy = 0, gz = 0; // x, y, and z axis readings of the gyroscope
+int16_t ax = 0, ay = 0, az = 0; // x, y, and z axis readings of the accelerometer
+int16_t mx = 0, my = 0, mz = 0; // x, y, and z axis readings of the magnetometer
+int16_t temperature_raw; // Chip temperature
+float IMU_temp;
+float gBias[3], aBias[3], mBias[3];
+int16_t gBiasRaw[3], aBiasRaw[3], mBiasRaw[3];
+
+// Orientaion vars
+uint8_t ORIENTATION[2] = {1,2}; // {connectors, power}
+int16_t cgx = 0, cgy = 0, cgz = 0; // corrected x, y, and z axis readings of the gyroscope
+int16_t cax = 0, cay = 0, caz = 0; // corrected x, y, and z axis readings of the accelerometer
+int16_t cmx = 0, cmy = 0, cmz = 0; // corrected x, y, and z axis readings of the magnetometer
 
 // Sensor averaging vars
 uint16_t light_sens = 0;

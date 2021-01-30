@@ -17,8 +17,8 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef __LSM9DS1_Registers_H__
-#define __LSM9DS1_Registers_H__
+#ifndef __LSM6DS1_Registers_H__
+#define __LSM6DS1_Registers_H__
 
 
 #ifdef HW_3v4
@@ -86,6 +86,8 @@
 #define OFFSET_Z_REG_L_M	0x09
 #define OFFSET_Z_REG_H_M	0x0A
 #define WHO_AM_I_M			0x0F
+#define OUT_TEMP_L			0x15
+#define OUT_TEMP_H			0x16
 #define CTRL_REG1_M			0x20
 #define CTRL_REG2_M			0x21
 #define CTRL_REG3_M			0x22
@@ -201,7 +203,7 @@
 #define OUT_MAG_RAW_Y_L		0x68
 #define OUT_MAG_RAW_Y_H		0x69
 #define OUT_MAG_RAW_Z_L		0x6A
-#define OUT_MAG_RAW_X_H		0x6B
+#define OUT_MAG_RAW_Z_H		0x6B
 
 ////////////////////////////////
 // LSM9DS1 WHO_AM_I Responses //

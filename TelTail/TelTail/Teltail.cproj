@@ -776,6 +776,9 @@
     <Compile Include="src\Config.h">
       <SubType>compile</SubType>
     </Compile>
+    <Compile Include="src\Control_Vars.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="src\ESC_Vars.h">
       <SubType>compile</SubType>
     </Compile>
@@ -788,13 +791,10 @@
     <Compile Include="src\Remote_Vars.h">
       <SubType>compile</SubType>
     </Compile>
-    <Compile Include="src\SK9822.h">
+    <Compile Include="src\ESC_UART.h">
       <SubType>compile</SubType>
     </Compile>
-    <Compile Include="src\VESC_UART.h">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="src\WS2812.h">
+    <Compile Include="src\WS2815.h">
       <SubType>compile</SubType>
     </Compile>
     <None Include="src\ASF\sam0\drivers\tcc\quick_start_faultn\qs_tcc_faultn.h">
@@ -1508,10 +1508,10 @@
     <Compile Include="src\IMU_Functions.h">
       <SubType>compile</SubType>
     </Compile>
-    <Compile Include="src\LSM9DS1_Registers.h">
+    <Compile Include="src\LSM6DS1_Registers.h">
       <SubType>compile</SubType>
     </Compile>
-    <Compile Include="src\LSM9DS1_Types.h">
+    <Compile Include="src\LSM6DS1_Types.h">
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="src\main.c">

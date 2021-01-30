@@ -17,10 +17,10 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef __LSM9DS1_Types_H__
-#define __LSM9DS1_Types_H__
+#ifndef __LSM6DS1_Types_H__
+#define __LSM6DS1_Types_H__
 
-#include "LSM9DS1_Registers.h"
+#include "LSM6DS1_Registers.h"
 
 // The LSM9DS1 functions over both I2C or SPI. This library supports both.
 // But the interface mode used must be sent to the LSM9DS1 constructor. Use

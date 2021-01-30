@@ -20,8 +20,7 @@
 #ifndef LEDVARS_H
 #define LEDVARS_H
 
-///////////////////   LED Variables   //////////////////
-////////////////////////////////////////////////////////
+
 enum modes_analog{
 	MODE_ANALOG_STATIC = 0,
 	MODE_ANALOG_COLOR_CYCLE = 1,
@@ -85,9 +84,9 @@ enum color_bases{
 
 enum RGB_types{
 	RGB_ANALOG = 0,
-	RGB_DIGITAL_APA102 = 1,
-	RGB_DIGITAL_SK9822 = 2,
-	RGB_NONE = 3
+	RGB_DIGITAL_APA102,
+	//RGB_DIGITAL_WS2815,
+	RGB_NONE
 };
 
 enum BRAKE_type{
@@ -97,6 +96,21 @@ enum BRAKE_type{
 	BRAKE_BLINK_FADE = 3,
 	BRAKE_FADING_BLINK = 4,
 	BRAKE_PACED_BLINK = 5
+};
+
+enum ERROR_type{
+	ERROR_RED = 0,
+	ERROR_BLUE = 1,
+	ERROR_GREEN = 2,
+	ERROR_TEAL = 3,
+	ERROR_YELLOW = 4,
+	ERROR_PURPLE = 5,
+};
+
+enum ERROR_duration{
+	SHORT_ERROR, // 2s
+	LONG_ERROR, // 5s
+	PERMINENT_ERROR
 };
 
 struct RGB_Vals{
@@ -153,6 +167,12 @@ uint8_t brake_light_mode = BRAKE_FADE;
 bool DEFAULT_STATE = false;
 bool BRIGHTS_ENABLED = false;
 uint8_t lowbeam_level = 70; // ~70%
+bool STANDBY_ENABLED = 0;
+bool SHUFFLE_ENABLED = 0;
+uint16_t shuffled_analog_modes = 0;
+uint16_t shuffled_digital_modes = 0;
+bool TurnSignalOn = 0;
+bool RestoreTurnLights = 0;
 
 // Bools
 uint8_t HEADLIGHTS = 0; // head/tail light enable bool
@@ -178,11 +198,6 @@ uint16_t strobe_off_dur = 500;
 // Analog LED vars
 
 // Digital LED vars
-enum DIGITAL_STRIP_TYPE{
-	WS2812 = 0,
-	APA102
-};
-
 uint8_t RGB_led_type;
 uint8_t configured_RGB_led_type;
 
@@ -207,6 +222,5 @@ struct spi_module R_LED_SPI_instance;
 
 
 const uint8_t brightness = 10;
-uint8_t DIGITAL_STRIP = APA102;
 
 #endif

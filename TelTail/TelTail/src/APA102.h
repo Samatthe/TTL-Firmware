@@ -1,10 +1,32 @@
+/*
+	Copyright 2019 Matthew Sauve	mattsauve@solidcircuits.net
+
+	This file is part of the TTL firmware.
+
+	The TTL firmware is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    The TTL firmware is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 #ifndef APA102_H 
 #define APA102_H
 
 #include "LED_Vars.h"
-#define APA_BAUD 160000 // 4000000 max = 0.25us
+
+#define APA_BAUD 160000
 
 void configure_APA_SPI(void);
+enum status_code L_APA_BUSY(void);
+enum status_code R_APA_BUSY(void);
 
 void configure_APA_SPI(void)
 {
@@ -32,7 +54,7 @@ void configure_APA_SPI(void)
     spi_init(&R_LED_SPI_instance, SERCOM2, &config_spi_master);
     spi_enable(&R_LED_SPI_instance);
 
-	
+	// TODO: Replace with memcpy
 	for(int i = 0; i < MAX_LEDCOUNT; i++){
 		L_SPI_send_buf[(i*4)+4] = (0b11100000 | 0x0A);
 		L_SPI_send_buf[(i*4)+5] = 0x00;
@@ -41,6 +63,7 @@ void configure_APA_SPI(void)
 	}
 
 	
+	// TODO: Replace with memcpy
 	for(int i = 0; i < MAX_LEDCOUNT; i++){
 		R_SPI_send_buf[(i*4)+4] = (0b11100000 | 0x0A);
 		R_SPI_send_buf[(i*4)+5] = 0x00;
@@ -48,6 +71,7 @@ void configure_APA_SPI(void)
 		R_SPI_send_buf[(i*4)+7] = 0x00;
 	}
 	
+	// TODO: Replace with memcpy
 	L_SPI_send_buf[0] = 0x00;
 	L_SPI_send_buf[1] = 0x00;
 	L_SPI_send_buf[2] = 0x00;

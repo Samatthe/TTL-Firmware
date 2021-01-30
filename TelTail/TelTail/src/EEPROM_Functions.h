@@ -20,9 +20,10 @@
 #ifndef EEPROMFUNCS_H
 #define EEPROMFUNCS_H
 	
-#include "Controls.h"
+#include "Control_Vars.h"
 #include "IMU_Functions.h"
 #include "Remote_Vars.h"
+#include "LED_Vars.h"
 
 //EEPROM globals
 uint8_t eeprom_data[EEPROM_PAGE_SIZE];
@@ -108,6 +109,10 @@ void save_led_data(){
 	eeprom_data[29] = Digital_RPM_Zoom;
 	eeprom_data[30] = Digital_RPM_Rate;
 	eeprom_data[31] = Digital_RPM_Brightness;
+	eeprom_data[32] = (shuffled_analog_modes & 0xFF);
+	eeprom_data[33] = (shuffled_analog_modes & 0xFF00) >> 8;
+	eeprom_data[34] = (shuffled_digital_modes & 0xFF);
+	eeprom_data[35] = (shuffled_digital_modes & 0xFF00) >> 8;
 
 	eeprom_emulator_write_page(1, eeprom_data);
 	eeprom_emulator_commit_page_buffer();
@@ -169,6 +174,8 @@ void restore_led_data(){
 		Digital_RPM_Zoom = 7;
 		Digital_RPM_Rate = 50;
 		Digital_RPM_Brightness = 50;
+		shuffled_analog_modes = 0;
+		shuffled_digital_modes = 0;
 
 		save_led_data();
 	}
@@ -235,6 +242,10 @@ void restore_led_data(){
 		Digital_RPM_Zoom = eeprom_data[29];
 		Digital_RPM_Rate = eeprom_data[30];
 		Digital_RPM_Brightness = eeprom_data[31];
+		shuffled_analog_modes = eeprom_data[32];
+		shuffled_analog_modes |= (eeprom_data[33] << 8);
+		shuffled_digital_modes = eeprom_data[34];
+		shuffled_digital_modes |= (eeprom_data[35] << 8);
 	}
 }
 
@@ -338,7 +349,7 @@ void save_orientation_controls_remote_esc_lights()
 	eeprom_data[21] = (RGB_led_type << 4) | brake_light_mode;
 	eeprom_data[22] = deadzone;
 	eeprom_data[23] = led_num;
-	eeprom_data[24] = (SYNC_RGB << 7) | (BRAKE_ALWAYS_ON << 6) | (DEFAULT_STATE << 5);
+	eeprom_data[24] = (SYNC_RGB << 7) | (BRAKE_ALWAYS_ON << 6) | (DEFAULT_STATE << 5) | (STANDBY_ENABLED << 4) | (SHUFFLE_ENABLED << 3) | (AUTO_DETECT_ESC << 2);
 
 	//Write EEPROM data
 	eeprom_emulator_write_page(3, eeprom_data);
@@ -384,11 +395,14 @@ void restore_orientation_controls_remote_esc_lights()
 
 		RGB_led_type = RGB_ANALOG;
 		brake_light_mode = BRAKE_FADE;
-		deadzone = 10;
+		deadzone = 20;
 		led_num = 30;
 		SYNC_RGB = true;
 		BRAKE_ALWAYS_ON = false;
 		DEFAULT_STATE = false;
+		STANDBY_ENABLED = false;
+		SHUFFLE_ENABLED = false;
+		AUTO_DETECT_ESC = true;
 
 		save_orientation_controls_remote_esc_lights();
 	}
@@ -431,6 +445,9 @@ void restore_orientation_controls_remote_esc_lights()
 		SYNC_RGB = ((eeprom_data[24]&0x80)>>7);
 		BRAKE_ALWAYS_ON = ((eeprom_data[24]&0x40)>>6);
 		DEFAULT_STATE = ((eeprom_data[24]&0x20)>>5);
+		STANDBY_ENABLED = ((eeprom_data[24]&0x10)>>4);
+		SHUFFLE_ENABLED = ((eeprom_data[24]&0x08)>>3);
+		AUTO_DETECT_ESC = ((eeprom_data[24]&0x04)>>2);
 	}
 }
 

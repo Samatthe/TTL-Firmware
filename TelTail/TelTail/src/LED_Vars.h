@@ -221,6 +221,7 @@ struct spi_module L_LED_SPI_instance;
 struct spi_module R_LED_SPI_instance;
 
 
-const uint8_t brightness = 10;
+// Brightness: 1-31
+const uint8_t brightness = 31;
 
 #endif

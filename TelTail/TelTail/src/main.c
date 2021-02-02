@@ -321,6 +321,8 @@ int main (void)
 	configure_LED_PWM();
 	if(RGB_led_type == RGB_DIGITAL_APA102){
 		configure_APA_SPI();
+		set_left_gnd();
+		set_right_gnd();
 	}/* else if(RGB_led_type == RGB_DIGITAL_WS2815){
 		configure_WS_SPI();
 	}*/
@@ -396,12 +398,6 @@ int main (void)
 		{
 			// TODO: Deconfigure old comms and configure new comms
 			ERROR_LEDs(ERROR_YELLOW, PERMINENT_ERROR);
-		}
-		
-		if(configured_RGB_led_type != RGB_led_type)
-		{
-			ERROR_LEDs(ERROR_PURPLE, SHORT_ERROR);
-			NVIC_SystemReset();
 		}
 
 		if((configured_RGB_led_type == RGB_DIGITAL_APA102 || configured_RGB_led_type == RGB_DIGITAL_APA102) && current_led_num != led_num){
@@ -956,93 +952,7 @@ int main (void)
 		///////////////////////////////////////////////////////////////////////////////////
 		if(TEST_TTL_OUTPUTS)
 		{
-			uint32_t timer = millis();
-			setLeftRGB(0,0,0);
-			setRightRGB(0,0,0);
-			setRed(0);
-			setWhite(0);
-			setAux(false);
-			for(int i = 0; i < 0xFFFF; i+=256){
-				setLeftRGB(i,0,0);
-				while(!check_timer_expired(&timer, 3)){}
-				timer = millis();
-			}
-		
-			while(!check_timer_expired(&timer, 500)){}
-			timer = millis();
-
-			for(int i = 0; i < 0xFFFF; i+=256){
-				setLeftRGB(0,i,0);
-				while(!check_timer_expired(&timer, 3)){}
-				timer = millis();
-			}
-		
-			while(!check_timer_expired(&timer, 500)){}
-			timer = millis();
-
-			for(int i = 0; i < 0xFFFF; i+=256){
-				setLeftRGB(0,0,i);
-				while(!check_timer_expired(&timer, 3)){}
-				timer = millis();
-			}
-		
-			while(!check_timer_expired(&timer, 500)){}
-			timer = millis();
-			setLeftRGB(0,0,0);
-
-			for(int i = 0; i < 0xFFFF; i+=256){
-				setRightRGB(i,0,0);
-				while(!check_timer_expired(&timer, 3)){}
-				timer = millis();
-			}
-		
-			while(!check_timer_expired(&timer, 500)){}
-			timer = millis();
-
-			for(int i = 0; i < 0xFFFF; i+=256){
-				setRightRGB(0,i,0);
-				while(!check_timer_expired(&timer, 3)){}
-				timer = millis();
-			}
-		
-			while(!check_timer_expired(&timer, 500)){}
-			timer = millis();
-
-			for(int i = 0; i < 0xFFFF; i+=256){
-				setRightRGB(0,0,i);
-				while(!check_timer_expired(&timer, 3)){}
-				timer = millis();
-			}
-		
-			while(!check_timer_expired(&timer, 500)){}
-			timer = millis();
-			setRightRGB(0,0,0);
-
-			for(int i = 0; i < 0xFFFF; i+=256){
-				setRed(i);
-				while(!check_timer_expired(&timer, 3)){}
-				timer = millis();
-			}
-
-			while(!check_timer_expired(&timer, 500)){}
-			timer = millis();
-			setRed(0);
-
-			for(int i = 0; i < 0xFFFF; i+=256){
-				setWhite(i);
-				while(!check_timer_expired(&timer, 3)){}
-				timer = millis();
-			}
-	
-			while(!check_timer_expired(&timer, 500)){}
-			timer = millis();
-
-			setWhite(0);
-			setAux(true);
-	
-			while(!check_timer_expired(&timer, 1500)){}
-			timer = millis();
-			setAux(0);
+			testOutputs();
 
 			TEST_TTL_OUTPUTS = 0;
 			SEND_CONTINUOUS = 1;

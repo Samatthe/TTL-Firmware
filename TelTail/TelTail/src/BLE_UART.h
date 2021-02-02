@@ -130,6 +130,7 @@ void process_ble_packet(void);
 void read_ble_packet(void);
 void configure_BLE_module(void);
 void configure_ble_usart(int baud);
+bool CHECK_FOR_NOISE_BLE(struct usart_module *const module, uint8_t buf[MAX_PAYLOAD_LEN+6], uint16_t max_size, uint32_t *noise_timer);
 
 struct ble_packet{
 	uint8_t ID;
@@ -645,7 +646,7 @@ void read_ble_packet(){
 		usart_abort_job(&ble_usart, USART_TRANSCEIVER_RX); //Stop listening to the BLE UART
 		memset(ble_USART_read_buffer, 0, MAX_BLE_MESSAGE_SIZE); // Clear BLE read buffer
 		usart_read_buffer_job(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE); // Start listening to the BLE UART
-	} else if(CHECK_FOR_NOISE(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE, &ble_noise_timer)){
+	} else if(CHECK_FOR_NOISE_BLE(&ble_usart, ble_USART_read_buffer, MAX_BLE_MESSAGE_SIZE, &ble_noise_timer)){
 		usart_abort_job(&ble_usart, USART_TRANSCEIVER_RX); //Stop listening to the BLE UART
 		memset(ble_USART_read_buffer, 0, MAX_BLE_MESSAGE_SIZE);
 		uint32_t temp_timer = millis();
@@ -678,5 +679,20 @@ void send_ttl_info(char info[19]){
 		}
 	}
 	usart_write_buffer_wait(&ble_usart, txbuf, 20);
+}
+
+bool CHECK_FOR_NOISE_BLE(struct usart_module *const module, uint8_t buf[MAX_PAYLOAD_LEN+6], uint16_t max_size, uint32_t *noise_timer){
+	if(buf[0] != BLE_START_BYTE && module->remaining_rx_buffer_length != max_size){
+		return true;
+	} else if(buf[0] == BLE_START_BYTE && !check_ble_packet_recieved()){
+		if(check_timer_expired(noise_timer,500)){
+			return true;
+		}else{
+			return false;
+		}
+	} else {
+		*noise_timer = millis();
+		return false;
+	}
 }
 #endif /* BLE_UART_H_ */

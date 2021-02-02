@@ -49,7 +49,7 @@ void TurnSignal(bool direction);
 void BlinkTail(uint16_t brightness, float rate);
 void AnalogSideLights(void);
 void DigitalSideLights(void);
-void testLEDs(void);
+void testOutputs(void);
 bool is_standby_active(void);
 void turn_off_side_lights(void);
 void SideLights(void);
@@ -719,9 +719,6 @@ void AnalogSideLights(){
 }
 
 void DigitalSideLights(){
-	set_left_gnd();
-	set_right_gnd();
-
 	if(check_timer_expired(&digital_refresh_time, (1000/digital_refresh_rate))){
 		if(led_num <= MAX_LEDCOUNT && led_num > 0){
 			// Set the color frames
@@ -800,7 +797,7 @@ void DigitalSideLights(){
 					//Slider 1 rate
 					//Slider 2 zoom
 					static uint16_t pos = 0;
-					pos = pos+(latest_vesc_vals.rpm*((1.0*Digital_RPM_Zoom)/(101.0-Digital_RPM_Rate)));
+					pos = pos+((latest_vesc_vals.rpm/50)*((1.0*Digital_RPM_Zoom)/(101.0-Digital_RPM_Rate)));
 					if(pos >= (Digital_RPM_Zoom * 764))
 						pos = 0;
 					setDigitalHue(pos, Digital_RPM_Zoom, 0, (uint16_t)(Digital_RPM_Brightness*(31.0/100.0)), false);
@@ -812,27 +809,27 @@ void DigitalSideLights(){
 					// old colors get pushed back at a rate set by the RPM
 					// brightness is set by slider
 					static uint32_t shift_rate_timer = 0;
-					if(check_timer_expired(&shift_rate_timer, (100-(((float)latest_vesc_vals.rpm/mcconf_limits.max_erpm)*100)))){
+					if(latest_vesc_vals.rpm > 200 && check_timer_expired(&shift_rate_timer, ((500)*(1.0-min((float)latest_vesc_vals.rpm/(mcconf_limits.max_erpm/4.0), 1.0))))){
 						shift_rate_timer = millis();
 						memmove(L_SPI_send_buf+8,L_SPI_send_buf+4,(led_num-1)*4);
 						memmove(R_SPI_send_buf+8,R_SPI_send_buf+4,(led_num-1)*4);
-					}
+						
+						uint16_t x = (remote_y*3);
 
-					uint16_t x = (remote_y*3);
-
-					L_SPI_send_buf[4] = R_SPI_send_buf[4] = (0b11100000 | brightness);
-					if(x/255 == 0){
-						L_SPI_send_buf[5] = R_SPI_send_buf[5] = 0;
-						L_SPI_send_buf[6] = R_SPI_send_buf[6] = 255-(x%255);
-						L_SPI_send_buf[7] = R_SPI_send_buf[7] = (x%255);
-					} else if(x/255 == 1){
-						L_SPI_send_buf[5] = R_SPI_send_buf[5] = (x%255);
-						L_SPI_send_buf[6] = R_SPI_send_buf[6] = 0;
-						L_SPI_send_buf[7] = R_SPI_send_buf[7] = 255-(x%255);
-					} else if(x/255 == 2){
-						L_SPI_send_buf[5] = R_SPI_send_buf[5] = 255-(x%255);
-						L_SPI_send_buf[6] = R_SPI_send_buf[6] = (x%255);
-						L_SPI_send_buf[7] = R_SPI_send_buf[7] = 0;
+						L_SPI_send_buf[4] = R_SPI_send_buf[4] = (0b11100000 | brightness);
+						if(x/255 == 0){
+							L_SPI_send_buf[5] = R_SPI_send_buf[5] = 0;
+							L_SPI_send_buf[6] = R_SPI_send_buf[6] = 255-(x%255);
+							L_SPI_send_buf[7] = R_SPI_send_buf[7] = (x%255);
+							} else if(x/255 == 1){
+							L_SPI_send_buf[5] = R_SPI_send_buf[5] = (x%255);
+							L_SPI_send_buf[6] = R_SPI_send_buf[6] = 0;
+							L_SPI_send_buf[7] = R_SPI_send_buf[7] = 255-(x%255);
+							} else if(x/255 == 2){
+							L_SPI_send_buf[5] = R_SPI_send_buf[5] = 255-(x%255);
+							L_SPI_send_buf[6] = R_SPI_send_buf[6] = (x%255);
+							L_SPI_send_buf[7] = R_SPI_send_buf[7] = 0;
+						}
 					}
 					break;
 				}
@@ -1160,10 +1157,136 @@ void R_digital_write(uint16_t led_count){
 	}*/
 }
 
-void testLEDs(void){
-	while(1){
+void testOutputs(void){
+	uint32_t timer = millis();
+	setRed(0);
+	setWhite(0);
+	setAux(false);
+	turn_off_side_lights();
 
+	if(configured_RGB_led_type == RGB_ANALOG){
+		for(int i = 0; i < 0xFFFF; i+=256){
+			setLeftRGB(i,0,0);
+			while(!check_timer_expired(&timer, 3)){}
+			timer = millis();
+		}
+	
+		while(!check_timer_expired(&timer, 500)){}
+		timer = millis();
+
+		for(int i = 0; i < 0xFFFF; i+=256){
+			setLeftRGB(0,i,0);
+			while(!check_timer_expired(&timer, 3)){}
+			timer = millis();
+		}
+	
+		while(!check_timer_expired(&timer, 500)){}
+		timer = millis();
+
+		for(int i = 0; i < 0xFFFF; i+=256){
+			setLeftRGB(0,0,i);
+			while(!check_timer_expired(&timer, 3)){}
+			timer = millis();
+		}
+	
+		while(!check_timer_expired(&timer, 500)){}
+		timer = millis();
+		setLeftRGB(0,0,0);
+
+		for(int i = 0; i < 0xFFFF; i+=256){
+			setRightRGB(i,0,0);
+			while(!check_timer_expired(&timer, 3)){}
+			timer = millis();
+		}
+	
+		while(!check_timer_expired(&timer, 500)){}
+		timer = millis();
+
+		for(int i = 0; i < 0xFFFF; i+=256){
+			setRightRGB(0,i,0);
+			while(!check_timer_expired(&timer, 3)){}
+			timer = millis();
+		}
+	
+		while(!check_timer_expired(&timer, 500)){}
+		timer = millis();
+
+		for(int i = 0; i < 0xFFFF; i+=256){
+			setRightRGB(0,0,i);
+			while(!check_timer_expired(&timer, 3)){}
+			timer = millis();
+		}
+	
+		while(!check_timer_expired(&timer, 500)){}
+		timer = millis();
+		setRightRGB(0,0,0);
+	} else if(configured_RGB_led_type == RGB_DIGITAL_APA102){
+		for(uint8_t j = 0; j < 255; j++){
+			for(uint16_t i = 0; i < led_num; i++)
+			{
+				L_SPI_send_buf[(i*4)+4] = R_SPI_send_buf[(i*4)+4] = (0b11100000 | brightness);
+				L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = j;
+				L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = 0;
+				L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = 0;
+			}
+			L_digital_write(led_num);
+			R_digital_write(led_num);
+		}
+		for(uint8_t j = 0; j < 255; j++){
+			for(uint16_t i = 0; i < led_num; i++)
+			{
+				L_SPI_send_buf[(i*4)+4] = R_SPI_send_buf[(i*4)+4] = (0b11100000 | brightness);
+				L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = 0;
+				L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = j;
+				L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = 0;
+			}
+			L_digital_write(led_num);
+			R_digital_write(led_num);
+		}
+		for(uint8_t j = 0; j < 255; j++){
+			for(uint16_t i = 0; i < led_num; i++)
+			{
+				L_SPI_send_buf[(i*4)+4] = R_SPI_send_buf[(i*4)+4] = (0b11100000 | brightness);
+				L_SPI_send_buf[(i*4)+5] = R_SPI_send_buf[(i*4)+5] = 0;
+				L_SPI_send_buf[(i*4)+6] = R_SPI_send_buf[(i*4)+6] = 0;
+				L_SPI_send_buf[(i*4)+7] = R_SPI_send_buf[(i*4)+7] = j;
+			}
+			L_digital_write(led_num);
+			R_digital_write(led_num);
+		}
+		DIGITAL_OFF = false;
+		turn_off_side_lights();
+		DIGITAL_OFF = false;
+		turn_off_side_lights();
+		DIGITAL_OFF = false;
+		turn_off_side_lights();
 	}
+
+	for(int i = 0; i < 0xFFFF; i+=256){
+		setRed(i);
+		while(!check_timer_expired(&timer, 3)){}
+		timer = millis();
+	}
+
+	while(!check_timer_expired(&timer, 500)){}
+	timer = millis();
+	setRed(0);
+
+	for(int i = 0; i < 0xFFFF; i+=256){
+		setWhite(i);
+		while(!check_timer_expired(&timer, 3)){}
+		timer = millis();
+	}
+	
+	while(!check_timer_expired(&timer, 500)){}
+	timer = millis();
+
+	setWhite(0);
+	setAux(true);
+	
+	while(!check_timer_expired(&timer, 1500)){}
+	timer = millis();
+	setAux(0);
 }
 
 #define STANDBY_LEAVE_DELAY 1500

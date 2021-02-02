@@ -145,7 +145,7 @@ bool CHECK_BUFFER(uint8_t *buf);
 void read_vesc_packet(void);
 void detect_esc_baud_pins(void);
 void detect_esc_uart_connected(void);
-bool CHECK_FOR_NOISE(struct usart_module *const module, uint8_t buf[MAX_PAYLOAD_LEN+6], uint16_t max_size, uint32_t *noise_timer);
+bool CHECK_FOR_NOISE_ESC(struct usart_module *const module, uint8_t buf[MAX_PAYLOAD_LEN+6], uint16_t max_size, uint32_t *noise_timer);
 
 float buffer_get_float32_auto(uint8_t *buffer, int8_t index);
 
@@ -704,7 +704,7 @@ void read_vesc_packet(void){
 		usart_abort_job(&vesc_usart, USART_TRANSCEIVER_RX);
 		// Start listening to the ESC UART
 		usart_read_buffer_job(&vesc_usart, vesc_USART_read_buffer, MAX_PAYLOAD_LEN+6);
-	} else if(CHECK_FOR_NOISE(&vesc_usart, vesc_USART_read_buffer, MAX_PAYLOAD_LEN+6, &ESC_noise_timer)){
+	} else if(CHECK_FOR_NOISE_ESC(&vesc_usart, vesc_USART_read_buffer, MAX_PAYLOAD_LEN+6, &ESC_noise_timer)){
 		//Stop listening to the BLE UART
 		usart_abort_job(&vesc_usart, USART_TRANSCEIVER_RX);
 		memset(vesc_USART_read_buffer, 0, MAX_PAYLOAD_LEN+6);
@@ -779,16 +779,16 @@ void detect_esc_baud_pins(void){
 	}
 }
 
-bool CHECK_FOR_NOISE(struct usart_module *const module, uint8_t buf[MAX_PAYLOAD_LEN+6], uint16_t max_size, uint32_t *noise_timer){
-	if(buf[0] != 0x02 && buf[0] != 0x03 && buf[0] != 0xA5 && module->remaining_rx_buffer_length != max_size){
+bool CHECK_FOR_NOISE_ESC(struct usart_module *const module, uint8_t buf[MAX_PAYLOAD_LEN+6], uint16_t max_size, uint32_t *noise_timer){
+	if(buf[0] != 0x02 && buf[0] != 0x03 && module->remaining_rx_buffer_length != max_size){
 		return true;
-	}else if(buf[0] == 0x02 || buf[0] == 0x03 || buf[0] == 0xA5){
+	} else if(buf[0] == 0x02 || buf[0] == 0x03){
 		if(check_timer_expired(noise_timer,500)){
 			return true;
 		}else{
 			return false;
 		}
-	}else{
+	} else {
 		*noise_timer = millis();
 		return false;
 	}

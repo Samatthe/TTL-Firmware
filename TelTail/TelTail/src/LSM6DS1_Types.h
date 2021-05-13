@@ -25,6 +25,12 @@
 // The LSM9DS1 functions over both I2C or SPI. This library supports both.
 // But the interface mode used must be sent to the LSM9DS1 constructor. Use
 // one of these two as the first parameter of the constructor.
+/*enum LSM_type
+{
+	LSM9D,
+	LSM6D,
+};*/
+
 enum interface_mode
 {
 	IMU_MODE_SPI,

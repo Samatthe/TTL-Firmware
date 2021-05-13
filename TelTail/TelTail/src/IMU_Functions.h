@@ -34,6 +34,8 @@
 #endif
 #define LSM9D_M_ADDR 0x1E
 
+//LSM_type LSM;
+
 // i2c master globals
 #define DATA_LENGTH 10
 uint8_t write_buffer[DATA_LENGTH];
@@ -603,7 +605,7 @@ void initIMU()
 	_autoCalc = false;
 }
 
-
+uint8_t xgTest;
 uint16_t beginIMU()
 {
 	//! Todo: don't use _xgAddress or _mAddress, duplicating memory
@@ -621,7 +623,7 @@ uint16_t beginIMU()
 		
 	// To verify communication, we can read from the WHO_AM_I register of
 	// each device. Store those in a variable so we can return them.
-	uint8_t xgTest = xgReadByte(WHO_AM_I_XG);	// Read the accel/mag WHO_AM_I
+	xgTest = xgReadByte(WHO_AM_I_XG);	// Read the accel/mag WHO_AM_I
 	
 #ifdef HW_3v4
 	uint8_t mTest = mReadByte(WHO_AM_I_M);		// Read the gyro WHO_AM_I
@@ -1195,8 +1197,13 @@ void readTemp()
 	uint8_t temp[2]; // We'll read two bytes from the temperature sensor into temp	
 	xgReadBytes(OUT_TEMP_L, temp, 2); // Read 2 bytes, beginning at OUT_TEMP_L
 	temperature_raw = ((int16_t)temp[1] << 8) | temp[0];
-	temperature_raw += 400; // Adjust for the 25 deg offset of the sensor
-	IMU_temp = (((float)temperature_raw)/16.0);
+	//if(LSM == 9D)
+	//temperature_raw += 400; // Adjust for the 25 deg offset of the sensor
+	//IMU_temp = (((float)temperature_raw)/16.0);
+	//}else if(LSM == 6D){
+		temperature_raw += 6400; // Adjust for the 25 deg offset of the sensor
+		IMU_temp = (((float)temperature_raw)/256.0);
+	//}
 	/*IMU_temp_total -= IMU_temp_buf[temp_avg_index];
 	IMU_temp_total += IMU_temp;
 	IMU_temp_buf[temp_avg_index] = IMU_temp;

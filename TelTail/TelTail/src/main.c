@@ -323,6 +323,17 @@ int main (void)
 		configure_APA_SPI();
 		set_left_gnd();
 		set_right_gnd();
+		light_modes = DIGITAL_MODE_NUM;
+	} else if(RGB_led_type == RGB_ANALOG){
+		light_modes = ANALOG_MODE_NUM;
+	} else {
+		light_modes = 1;
+		port_pin_set_output_level(PIN_PA07, false);
+		port_pin_set_output_level(PIN_PA10, false);
+		port_pin_set_output_level(PIN_PA11, false);
+		port_pin_set_output_level(PIN_PA13, false);
+		port_pin_set_output_level(PIN_PA14, false);
+		port_pin_set_output_level(PIN_PB11, false);
 	}/* else if(RGB_led_type == RGB_DIGITAL_WS2815){
 		configure_WS_SPI();
 	}*/
@@ -385,8 +396,17 @@ int main (void)
 	//ERROR_LEDs(ERROR_RED, SHORT_ERROR);
 	//testLEDs();
 #endif
+uint32_t periodic_message_timer = 0;
 	while(1)
 	{
+		//Send message to app every 10 seconds
+		/*if(check_timer_expired(&periodic_message_timer, 10000)){
+			char message[19];
+			message[0] = xgTest;
+			send_ttl_info(message);
+			periodic_message_timer = millis();
+		}*/
+
 		// Reset the module if PA15 is pulled low
 		if(port_pin_get_input_level(BOOT_BTN)==false)
 			NVIC_SystemReset();

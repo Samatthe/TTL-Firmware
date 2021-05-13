@@ -128,7 +128,9 @@ struct RGB_Vals{
 #endif
 
 // Mode Vars
-const uint8_t light_modes = 9; // number of light modes, one indexed
+#define ANALOG_MODE_NUM 9
+#define DIGITAL_MODE_NUM 9
+uint8_t light_modes = ANALOG_MODE_NUM; // number of light modes, one indexed
 uint8_t light_mode = 1; // current light mode, zero indexed
 
 // Mode Specific Vars

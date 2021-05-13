@@ -403,6 +403,11 @@ void process_ble_packet(){
 			break;
 		case Apply_Lights_Config:
 			RGB_led_type = (ble_recieve_packet.payload[0]&0x0F0)>>4;
+			if(RGB_led_type == RGB_ANALOG){
+				light_modes = ANALOG_MODE_NUM;
+			} else if(RGB_DIGITAL_APA102){
+				light_modes = DIGITAL_MODE_NUM;
+			}
 			brake_light_mode = (ble_recieve_packet.payload[0]&0x0F);
 			deadzone = (ble_recieve_packet.payload[1]);
 			led_num = (ble_recieve_packet.payload[2]);

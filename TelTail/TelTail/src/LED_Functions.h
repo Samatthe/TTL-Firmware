@@ -31,6 +31,7 @@
 // Define LED Functions
 #define TURN_OFF_TIME 400
 #define TURN_ON_TIME 250
+#define SHUFFLE_TIME 30000
 
 struct tcc_module tcc0;
 struct tcc_module tcc1;
@@ -1345,7 +1346,7 @@ void set_mode_shuffle_state(uint16_t* shuffled_modes, bool state, uint16_t mode)
 
 void shuffle_light_modes(void){
 	static long shuffle_timer = 0;
-	if(check_timer_expired(&shuffle_timer, 5000)){
+	if(check_timer_expired(&shuffle_timer, SHUFFLE_TIME)){
 		int temp_mode = light_mode;
 		uint16_t temp_shuffle_bits;
 		uint8_t same_index = 0;

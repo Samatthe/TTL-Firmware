@@ -390,6 +390,7 @@ int main (void)
 
 	////////////////////////////////////////////
 	LIGHTS_ON = DEFAULT_STATE;
+	AUTO_DETECT_ESC = true; // hardcode the ESC UART detection to ensure protection. This is temporary until decision is made to keep or remove option to disable protection.
 #ifdef LED_Test
 	LIGHTS_ON = true;
 	HEADLIGHTS = true;

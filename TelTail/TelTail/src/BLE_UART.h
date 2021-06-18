@@ -686,11 +686,13 @@ void send_ttl_info(char info[19]){
 	usart_write_buffer_wait(&ble_usart, txbuf, 20);
 }
 
-bool CHECK_FOR_NOISE_BLE(struct usart_module *const module, uint8_t buf[MAX_PAYLOAD_LEN+6], uint16_t max_size, uint32_t *noise_timer){
+bool CHECK_FOR_NOISE_BLE(struct usart_module *const module, uint8_t buf[MAX_BLE_MESSAGE_SIZE], uint16_t max_size, uint32_t *noise_timer){
 	if(buf[0] != BLE_START_BYTE && module->remaining_rx_buffer_length != max_size){
 		return true;
 	} else if(buf[0] == BLE_START_BYTE && !check_ble_packet_recieved()){
-		if(check_timer_expired(noise_timer,500)){
+		if(check_timer_expired(noise_timer,6)){
+			uint8_t temp_buf[2] = {0x91,0x91};
+			usart_write_buffer_wait(&ble_usart, temp_buf, 2);
 			return true;
 		}else{
 			return false;

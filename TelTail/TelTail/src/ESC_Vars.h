@@ -22,7 +22,8 @@
 
 enum ESC_FW{
 	FW_3v6 = 0,
-	FW_3v7,
+	FW_3v7_3v49,
+	FW_3v50_5v2,
 	FW_UNITY,
 	FW_ACKMANIAC,
 };

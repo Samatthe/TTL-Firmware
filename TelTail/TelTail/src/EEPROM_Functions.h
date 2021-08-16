@@ -389,7 +389,7 @@ void restore_orientation_controls_remote_esc_lights()
 		deadzone = 10;
 		button_type = 1;
 
-		esc_fw = FW_3v7; // Set v3.7-v5.1 as the default FW to prevent bricking any ESCs
+		esc_fw = FW_3v7_3v49; // Set v3.7-v5.1 as the default FW to prevent bricking any ESCs
 		esc_comms = COMMS_UART;
 		UART_baud = BAUD_9600;
 

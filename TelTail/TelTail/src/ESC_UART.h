@@ -24,7 +24,7 @@
 #include "ESC_Vars.h"
 #include <math.h>
 
-#define VESC_UART_PERIOD 10
+#define VESC_UART_PERIOD 15
 
 struct chuck_data{
 	int8_t js_x;
@@ -278,7 +278,7 @@ void process_recieved_packet(){
 			mcconf_limits.temp_motor_end = ((vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_END] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_END+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_END+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_TMP_MTR_END+3])/1000;
 			mcconf_limits.min_duty = ((vesc_revieve_packet.payload[GET_MCCONF_DUTY_MIN] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_DUTY_MIN+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_DUTY_MIN+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_DUTY_MIN+3])/1000;
 			mcconf_limits.max_duty = ((vesc_revieve_packet.payload[GET_MCCONF_DUTY_MAX] << 24) | (vesc_revieve_packet.payload[GET_MCCONF_DUTY_MAX+1] << 16) | (vesc_revieve_packet.payload[GET_MCCONF_DUTY_MAX+2] << 8) | vesc_revieve_packet.payload[GET_MCCONF_DUTY_MAX+3])/1000;
-		} else if (esc_fw == FW_3v7 || esc_fw == FW_UNITY || esc_fw == FW_ACKMANIAC){
+		} else if (esc_fw == FW_3v7_3v49 || esc_fw == FW_3v50_5v2 || esc_fw == FW_UNITY || esc_fw == FW_ACKMANIAC){
 			mcconf_limits.motor_current_max = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_MTR_CURR_MAX);
 			mcconf_limits.motor_current_min = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_MTR_CURR_MIN);
 			mcconf_limits.input_current_max = buffer_get_float32_auto(vesc_revieve_packet.payload, GET_MCCONF_IN_CURR_MAX);
@@ -555,10 +555,12 @@ void detect_vesc_firmware(){
 		if((latest_vesc_vals.FW_VERSION_MAJOR == 2 && latest_vesc_vals.FW_VERSION_MINOR <= 18)||
 			(latest_vesc_vals.FW_VERSION_MAJOR == 3 && latest_vesc_vals.FW_VERSION_MINOR <= 6)){ // <= v2.18 || < 3.7
 			esc_fw = FW_3v6;
+		} else if((latest_vesc_vals.FW_VERSION_MAJOR == 3 && latest_vesc_vals.FW_VERSION_MINOR >= 7 && latest_vesc_vals.FW_VERSION_MINOR <= 49)){ // >= 3.7 && <= 3.49
+			esc_fw = FW_3v7_3v49;
 		} else if((latest_vesc_vals.FW_VERSION_MAJOR == 3 && latest_vesc_vals.FW_VERSION_MINOR >= 7 && latest_vesc_vals.FW_VERSION_MINOR <= 67)||
-				(latest_vesc_vals.FW_VERSION_MAJOR == 4 && latest_vesc_vals.FW_VERSION_MINOR >= 0 && latest_vesc_vals.FW_VERSION_MINOR <= 2)||
-				(latest_vesc_vals.FW_VERSION_MAJOR == 5 && latest_vesc_vals.FW_VERSION_MINOR >= 0 && latest_vesc_vals.FW_VERSION_MINOR <= 2)){ // >= 3.7 && <= 5.1
-			esc_fw = FW_3v7;
+		(latest_vesc_vals.FW_VERSION_MAJOR == 4 && latest_vesc_vals.FW_VERSION_MINOR >= 0 && latest_vesc_vals.FW_VERSION_MINOR <= 2)||
+		(latest_vesc_vals.FW_VERSION_MAJOR == 5 && latest_vesc_vals.FW_VERSION_MINOR >= 0 && latest_vesc_vals.FW_VERSION_MINOR <= 2)){ // >= 3.50 && <= 5.2
+			esc_fw = FW_3v50_5v2;
 		} else if(latest_vesc_vals.FW_VERSION_MAJOR == 23){ // Unity
 			esc_fw = FW_UNITY;
 		} else if(latest_vesc_vals.FW_VERSION_MAJOR == 3 && latest_vesc_vals.FW_VERSION_MINOR >= 100){ // Ackmaniac
@@ -607,7 +609,7 @@ void detect_vesc_firmware(){
 			GET_MCCONF_DUTY_MIN = 75;
 			GET_MCCONF_DUTY_MAX = 79;
 		}
-		if(esc_fw == FW_3v7 || esc_fw == FW_UNITY || esc_fw == FW_ACKMANIAC){ // >= 3.7 && <= 5.2 || AckManiac || Unity
+		if(esc_fw == FW_3v7_3v49 || esc_fw == FW_UNITY || esc_fw == FW_ACKMANIAC){ // >= 3.7 && <= 5.2 || AckManiac || Unity
 			COMM_FW_VERSION = 0;
 			COMM_GET_VALUES = 4;
 			COMM_GET_MCCONF = 14;
@@ -636,8 +638,38 @@ void detect_vesc_firmware(){
 			GET_MCCONF_DUTY_MIN = 82;
 			GET_MCCONF_DUTY_MAX = 86;
 		}
+
+		if(esc_fw == FW_3v50_5v2){
+			COMM_FW_VERSION = 0;
+			COMM_GET_VALUES = 4;
+			COMM_GET_MCCONF = 14;
+			COMM_ALIVE = 30;
+			COMM_GET_DECODED_PPM = 31;
+			COMM_GET_DECODED_CHUK = 33;
+			COMM_SET_CHUCK_DATA = 35;
+
+			GET_MCCONF_MTR_CURR_MAX = 9;
+			GET_MCCONF_MTR_CURR_MIN = 13;
+			GET_MCCONF_IN_CURR_MAX = 17;
+			GET_MCCONF_IN_CURR_MIN = 21;
+			GET_MCCONF_ABS_CURR_MAX = 25;
+			GET_MCCONF_ERPM_MIN = 29;
+			GET_MCCONF_ERPM_MAX = 33;
+			GET_MCCONF_ERPM_FBRAKE_MAX = 41;
+			GET_MCCONF_ERPM_FBRAKE_CC_MAX = 45;
+			GET_MCCONF_VIN_MIN = 49;
+			GET_MCCONF_VIN_MAX = 53;
+			GET_MCCONF_BAT_CUT_STRT = 57;
+			GET_MCCONF_BAT_CUT_END = 61;
+			GET_MCCONF_TMP_FET_STRT = 66;
+			GET_MCCONF_TMP_FET_END = 70;
+			GET_MCCONF_TMP_MTR_STRT = 74;
+			GET_MCCONF_TMP_MTR_END = 78;
+			GET_MCCONF_DUTY_MIN = 86;
+			GET_MCCONF_DUTY_MAX = 90;
+		}
 		
-		if(esc_fw == FW_3v7 || esc_fw == FW_ACKMANIAC){ // >= 3.7 && <= 5.2 || AckManiac
+		if(esc_fw == FW_3v7_3v49 || esc_fw == FW_3v50_5v2 || esc_fw == FW_ACKMANIAC){ // >= 3.7 && <= 5.2 || AckManiac
 			GET_VALUES_FET_TEMP = 1;
 			GET_VALUES_MTR_CURR = 5;
 			GET_VALUES_IN_CURR = 9;

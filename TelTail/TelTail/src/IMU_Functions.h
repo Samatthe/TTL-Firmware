@@ -494,7 +494,7 @@ void initIMU()
 	settings.gyro.latchInterrupt = true;
 	
 	settings.accel.enabled = true;
-	settings.accel.enableX = true;
+	settings.accel.enableX = true;// LSM6D inverted from LSM9D, corrected in read funcs
 	settings.accel.enableY = true;
 	settings.accel.enableZ = true;
 	settings.accel.highResEnable = false;
@@ -953,7 +953,7 @@ void calibrate(bool autoCalc)
 		readAccel();
 		aBiasRawTemp[0] += ax;
 		aBiasRawTemp[1] += ay;
-		aBiasRawTemp[2] += az - (int16_t)(1./aRes); // Assumes sensor facing up!
+		aBiasRawTemp[2] += az;
 	}  
 	for (ii = 0; ii < 3; ii++)
 	{
@@ -1860,7 +1860,7 @@ uint8_t readBytes(uint8_t address, uint8_t subAddress, uint8_t * dest, uint8_t c
 }
 
 void CorrectIMUvalues(uint8_t connector_orient, uint8_t power_orient){
-	if((connector_orient == 0 || power_orient == 0)||(connector_orient > 6 || power_orient > 6)){
+	if((connector_orient == 0 || power_orient == 0)||(connector_orient > 6 || power_orient > 6)||(connector_orient == power_orient)){
 		caz = az;
 		cgz = gz;
 		cmz = mz;
@@ -1871,204 +1871,205 @@ void CorrectIMUvalues(uint8_t connector_orient, uint8_t power_orient){
 		cmx = mx;
 		cmy = my;
 	} else if(connector_orient == ORIENT_UP){ // Connectors Up
-		caz = az;
+		caz = az; // Verified
 		cgz = gz;
 		cmz = mz;
 		if(power_orient == ORIENT_LEFT){ // Power Left
-			cax = -ay;
-			cay = ax;
+			cax = -ay; // Verified
+			cay = ax; // Verified
 			cgx = -gy;
 			cgy = gx;
 			cmx = my;
 			cmy = -mx;
 		}else if(power_orient == ORIENT_RIGHT){ // Power Right
-			cax = ay;
-			cay = -ax;
+			cax = ay;  // Verified
+			cay = -ax;  // Verified
 			cgx = gy;
 			cgy = -gx;
 			cmx = -my;
 			cmy = mx;
 		}else if(power_orient == ORIENT_REAR){ // Power Rear
-			cax = -ax;
-			cay = -ay;
+			cax = -ax; // Verified
+			cay = -ay; // Verified
 			cgx = -gx;
 			cgy = -gy;
 			cmx = -mx;
 			cmy = -my;
 		}else if(power_orient == ORIENT_FRONT){ // Power Front
-			cax = ax;
-			cay = ay;
+			cax = ax; // Verified
+			cay = ay; // Verified
 			cgx = gx;
 			cgy = gy;
 			cmx = mx;
 			cmy = my;
 		}
 	} else if(connector_orient == ORIENT_DOWN){ // Connectors Down
-		caz = -az;
+		caz = -az; // Verified
 		cgz = -gz;
 		cmz = -mz;
 		if(power_orient == ORIENT_LEFT){ // Power Left
-			cax = ay;
-			cay = ax;
+			cax = -ay; // Verified
+			cay = -ax; // Verified
 			cgx = gy;
 			cgy = gx;
 			cmx = -my;
 			cmy = -mx;
 		}else if(power_orient == ORIENT_RIGHT){ // Power Right
-			cax = -ay;
-			cay = -ax;
+			cax = ay; // Verified
+			cay = ax; // Verified
 			cgx = -gy;
 			cgy = -gx;
 			cmx = my;
 			cmy = mx;
 		}else if(power_orient == ORIENT_REAR){ // Power Rear
-			cax = ax;
-			cay = -ay;
+			cax = ax; // Verified
+			cay = -ay; // Verified
 			cgx = gx;
 			cgy = -gy;
 			cmx = mx;
 			cmy = -my;
 		}else if(power_orient == ORIENT_FRONT){ // Power Front
-			cax = -ax;
-			cay = ay;
+			cax = -ax; // Verified
+			cay = ay; // Verified
 			cgx = -gx;
 			cgy = gy;
 			cmx = -mx;
 			cmy = my;
 		}
 	} else if(connector_orient == ORIENT_LEFT){ // Connectors Left
-		caz = ax;
-		cgz = gx;
-		cmz = -mx;
+		cax = -az; // Verified
+		cgx = -gz;
+		cmx = mz;
 		if(power_orient == ORIENT_UP){ // Power Up
-			cax = ay;
-			cay = az;
-			cgx = gy;
-			cgy = gz;
-			cmx = -my;
-			cmy = mz;
+			caz = ay; // Verified
+			cay = -ax; // Verified
+			cgz = gy;
+			cgy = -gx;
+			cmz = -my;
+			cmy = mx;
 		}else if(power_orient == ORIENT_DOWN){ // Power Down
-			cax = -ay;
-			cay = -az;
-			cgx = -gy;
-			cgy = -gz;
-			cmx = my;
-			cmy = -mz;
+			caz = -ay; // Verified
+			cay = ax; // Verified
+			cgz = -gy;
+			cgy = gx;
+			cmz = my;
+			cmy = -mx;
 		}else if(power_orient == ORIENT_REAR){ // Power Rear
-			cax = az;
-			cay = -ay;
-			cgx = gz;
+			caz = -ax; // Verified
+			cay = -ay; // Verified
+			cgz = -gx;
 			cgy = -gy;
-			cmx = -mz;
+			cmz = mx;
 			cmy = -my;
 		}else if(power_orient == ORIENT_FRONT){ // Power Front
-			cax = -az;
-			cay = ay;
-			cgx = -gz;
+			caz = ax; // Verified
+			cay = ay; // Verified
+			cgz = gx;
 			cgy = gy;
-			cmx = mz;
+			cmz = -mx;
 			cmy = my;
 		}
 	} else if(connector_orient == ORIENT_RIGHT){ // Connectors Right
-		caz = -ax;
-		cgz = -gx;
-		cmz = mx;
+		cax = az; // Verified
+		cgx = gz;
+		cmx = -mz;
 		if(power_orient == ORIENT_UP){ // Power Up
-			cax = -ay;
-			cay = az;
-			cgx = -gy;
-			cgy = gz;
-			cmx = my;
-			cmy = mz;
+			caz = ay; // Verified
+			cay = ax; // Verified
+			cgz = gy;
+			cgy = gx;
+			cmz = -my;
+			cmy = mx;
 		}else if(power_orient == ORIENT_DOWN){ // Power Down
-			cax = ay;
-			cay = -az;
-			cgx = gy;
-			cgy = -gz;
-			cmx = -my;
-			cmy = -mz;
+			caz = -ay; // Verified
+			cay = -ax; // Verified
+			cgz = -gy;
+			cgy = -gx;
+			cmz = my;
+			cmy = -mx;
 		}else if(power_orient == ORIENT_REAR){ // Power Rear
-			cax = -az;
-			cay = -ay;
-			cgx = -gz;
+			caz = ax; // Verified
+			cay = -ay; // Verified
+			cgz = gx;
 			cgy = -gy;
-			cmx = mz;
+			cmz = -mx;
 			cmy = -my;
 		}else if(power_orient == ORIENT_FRONT){ // Power Front
-			cax = az;
-			cay = ay;
-			cgx = gz;
+			caz = -ax; // Verified
+			cay = ay; // Verified
+			cgz = -gx;
 			cgy = gy;
-			cmx = -mz;
+			cmz = mx;
 			cmy = my;
 		}
 	} else if(connector_orient == ORIENT_REAR){ // Connectors Rear
-		caz = -ay;
-		cgz = -gy;
-		cmz = -my;
+		cay = -az; // Verified
+		cgy = -gz;
+		cmy = -mz;
 		if(power_orient == ORIENT_UP){ // Power Up
-			cax = ax;
-			cay = az;
+			cax = ax; // Verified
+			caz = ay; // Verified
 			cgx = gx;
-			cgy = gz;
+			cgz = gy;
 			cmx = mx;
-			cmy = mz;
+			cmz = my;
 		}else if(power_orient == ORIENT_DOWN){ // Power Down
-			cax = -ax;
-			cay = -az;
+			cax = -ax; // Verified
+			caz = -ay; // Verified
 			cgx = -gx;
-			cgy = -gz;
+			cgz = -gy;
 			cmx = -mx;
-			cmy = -mz;
+			cmz = -my;
 		}else if(power_orient == ORIENT_LEFT){ // Power Left
-			cax = -az;
-			cay = ax;
-			cgx = -gz;
-			cgy = gx;
-			cmx = mz;
-			cmy = -mx;
+			cax = -ay; // Verified
+			caz = ax; // Verified
+			cgx = -gy;
+			cgz = gx;
+			cmx = -my;
+			cmz = mx;
 		}else if(power_orient == ORIENT_RIGHT){ // Power Right
-			cax = az;
-			cay = -ax;
-			cgx = gz;
-			cgy = -gx;
-			cmx = -mz;
-			cmy = mx;
+			cax = ay; // Verified
+			caz = -ax; // Verified
+			cgx = gy;
+			cgz = -gx;
+			cmx = my;
+			cmz = -mx;
 		}
 	} else if(connector_orient == ORIENT_FRONT){ // Connectors Front
-		caz = ay;
-		cgz = gy;
-		cgz = my;
+		cay = az; // Verified
+		cgy = gz;
+		cgy = mz;
 		if(power_orient == ORIENT_UP){ // Power Up
-			cax = -ax;
-			cay = az;
+			cax = -ax; // Verified
+			caz = ay; // Verified
 			cgx = -gx;
-			cgy = gz;
+			cgz = gy;
 			cmx = -mx;
-			cmy = mz;
+			cmz = my;
 		}else if(power_orient == ORIENT_DOWN){ // Power Down
-			cax = ax;
-			cay = -az;
+			cax = ax; // Verified
+			caz = -ay; // Verified
 			cgx = gx;
-			cgy = -gz;
+			cgz = -gy;
 			cmx = mx;
-			cmy = -mz;
+			cmz = -my;
 		}else if(power_orient == ORIENT_LEFT){ // Power Left
-			cax = az;
-			cay = ax;
-			cgx = gz;
-			cgy = gx;
-			cmx = -mz;
-			cmy = -mx;
+			cax = -ay; // Verified
+			caz = -ax; // Verified
+			cgx = -gy;
+			cgz = -gx;
+			cmx = -my;
+			cmz = -mx;
 		}else if(power_orient == ORIENT_RIGHT){ // Power Right
-			cax = -az;
-			cay = -ax;
-			cgx = -gz;
-			cgy = -gx;
-			cmx = mz;
-			cmy = mx;
+			cax = ay; // Verified
+			caz = ax; // Verified
+			cgx = gy;
+			cgz = gx;
+			cmx = my;
+			cmz = mx;
 		}
 	}
+	caz = caz+(int16_t)(1./aRes); // Compensate for the 1G offset
 }
 
 void calculate_heading(){

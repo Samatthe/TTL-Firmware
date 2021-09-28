@@ -591,8 +591,13 @@ uint32_t periodic_message_timer = 0;
 					break;
 				case 4:
 					ble_write_buffer[0] = 0x2F;
-					ble_write_buffer[1] = (temperature_raw & 0xFF); // IMU Temperature
-					ble_write_buffer[2] = (temperature_raw & 0xFF00) >> 8; // IMU Temperature
+					if(IS_LSM6DS3){
+						ble_write_buffer[1] = ((temperature_raw*16) & 0xFF); // IMU Temperature
+						ble_write_buffer[2] = ((temperature_raw*16) & 0xFF00) >> 8; // IMU Temperature
+					} else {
+						ble_write_buffer[1] = ((temperature_raw) & 0xFF); // IMU Temperature
+						ble_write_buffer[2] = ((temperature_raw) & 0xFF00) >> 8; // IMU Temperature
+					}
 					ble_write_buffer[3] = 0xDE;
 					usart_write_buffer_job(&ble_usart, ble_write_buffer, 4);
 					break;
@@ -1009,6 +1014,7 @@ uint32_t periodic_message_timer = 0;
 		
 		//////////////////////////////////   LED MODES   //////////////////////////////////
 		///////////////////////////////////////////////////////////////////////////////////
+		thermal_throttle();
 		SideLights();
 		HeadLight();
 		BrakeLight();

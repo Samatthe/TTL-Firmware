@@ -34,7 +34,6 @@
 #endif
 #define LSM9D_M_ADDR 0x1E
 
-//LSM_type LSM;
 
 // i2c master globals
 #define DATA_LENGTH 10
@@ -623,18 +622,21 @@ uint16_t beginIMU()
 		
 	// To verify communication, we can read from the WHO_AM_I register of
 	// each device. Store those in a variable so we can return them.
-	xgTest = xgReadByte(WHO_AM_I_XG);	// Read the accel/mag WHO_AM_I
+	xgTest = xgReadByte(WHO_AM_I_XG);	// Read the accel/gyro WHO_AM_I
 	
 #ifdef HW_3v4
-	uint8_t mTest = mReadByte(WHO_AM_I_M);		// Read the gyro WHO_AM_I
+	uint8_t mTest = mReadByte(WHO_AM_I_M);		// Read the magnetometer WHO_AM_I
 	uint16_t whoAmICombined = (xgTest << 8) | mTest;
 	if (whoAmICombined != ((WHO_AM_I_AG_RSP << 8) | WHO_AM_I_M_RSP))
 		return 0;
 #endif
 #if  defined(HW_4v0) || defined(HW_4v1)
 	uint16_t whoAmICombined = xgTest;
-	if (xgTest != 0x69 && xgTest != 0x6A && xgTest != 0x6B && xgTest != 0x6C)//WHO_AM_I_AG_RSP) // A work around to protect for the use of al LSM6DS parts
+	if (xgTest != 0x69 && xgTest != 0x6A && xgTest != 0x6B && xgTest != 0x6C) // A work around to protect for the use of al LSM6DS parts
 		return 0;
+	if(xgTest == 0x69) {
+		IS_LSM6DS3 = true;
+	}
 #endif
 	// Gyro initialization stuff:
 	initGyro();	// This will "turn on" the gyro. Setting up interrupts, etc.
@@ -1187,30 +1189,31 @@ int16_t readMag_axis(enum lsm9ds1_axis axis)
 }
 
 // Scale: 16 LSB/deg C
-/*#define TEMP_AVG_NUM 5
-float IMU_temp_total = 0;
-float IMU_temp_buf[TEMP_AVG_NUM] = 0;
-float IMU_temp_avg = 25;*/
+#define TEMP_AVG_NUM 10
+//float IMU_temp_avg = 25.0;
+uint32_t IMU_temp_total = 125.0; // 25 * TEMP_AVG_NUM
+uint16_t IMU_temp_buf[TEMP_AVG_NUM];//*//
 void readTemp()
 {
 	static uint8_t temp_avg_index = 0;
+
 	uint8_t temp[2]; // We'll read two bytes from the temperature sensor into temp	
 	xgReadBytes(OUT_TEMP_L, temp, 2); // Read 2 bytes, beginning at OUT_TEMP_L
 	temperature_raw = ((int16_t)temp[1] << 8) | temp[0];
-	//if(LSM == 9D)
-	//temperature_raw += 400; // Adjust for the 25 deg offset of the sensor
-	//IMU_temp = (((float)temperature_raw)/16.0);
-	//}else if(LSM == 6D){
+	if(IS_LSM6DS3) {
+		temperature_raw += 400; // Adjust for the 25 deg offset of the sensor
+		IMU_temp = (((float)temperature_raw)/16.0);
+	} else {
 		temperature_raw += 6400; // Adjust for the 25 deg offset of the sensor
 		IMU_temp = (((float)temperature_raw)/256.0);
-	//}
+	}
 	/*IMU_temp_total -= IMU_temp_buf[temp_avg_index];
-	IMU_temp_total += IMU_temp;
-	IMU_temp_buf[temp_avg_index] = IMU_temp;
-	IMU_temp_avg = IMU_temp_total/TEMP_AVG_NUM;
+	IMU_temp_total += temperature_raw;
+	IMU_temp_buf[temp_avg_index] = temperature_raw;
+	temperature_raw = IMU_temp_total/TEMP_AVG_NUM;
 	temp_avg_index++;
 	if(temp_avg_index >= TEMP_AVG_NUM)
-	temp_avg_index = 0;*/
+	temp_avg_index = 0;//*/
 }
 
 void readGyro()

@@ -125,4 +125,6 @@ float heading = 0;
 uint32_t headingTime = 0;
 uint32_t lheadingTime = 0;
 
+bool IS_LSM6DS3 = false;
+
 #endif

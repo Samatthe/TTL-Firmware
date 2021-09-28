@@ -29,9 +29,6 @@
 #include "IMU_Vars.h"
 
 // Define LED Functions
-#define TURN_OFF_TIME 400
-#define TURN_ON_TIME 250
-#define SHUFFLE_TIME 30000
 
 struct tcc_module tcc0;
 struct tcc_module tcc1;
@@ -68,6 +65,16 @@ void R_digital_write(uint16_t led_count);
 
 void set_mode_shuffle_state(uint16_t* shuffled_modes, bool state, uint16_t mode);
 void shuffle_light_modes(void);
+
+void sensBraking();
+
+void light_warning_blink(uint8_t light_controlled, uint16_t low_level, uint16_t high_level);
+void thermal_throttle();
+bool thermal_throttle_helper(uint8_t controlled_light);
+bool overtemp(uint8_t isHardLimit);
+bool coolingDown();
+void cooling_timer_reset();
+
 
 
 
@@ -961,37 +968,27 @@ void BrakeLight(){
 	}
 }
 
-#define  BRIGHTS_TIMEOUT 600000 // 10min
 void HeadLight(){
-	static uint32_t brights_timer = 0;
-	
 	if(HEADLIGHTS && lightControlHead() && sensorControl() && LIGHTS_ON && !is_standby_active()){
 		if(BRIGHTS_ENABLED){
-			if(BRIGHTS && IMU_temp > 60.0){
-				setWhite(0xFFFF*((float)lowbeam_level/100));
-				brights_timer = millis();
-				while(!check_timer_expired(&brights_timer,500)){}
-				setWhite(0xFFFF); // 100%
-				brights_timer = millis();
-				while(!check_timer_expired(&brights_timer,1000)){}
-				setWhite(0xFFFF*((float)lowbeam_level/100));
-				brights_timer = millis();
-				while(!check_timer_expired(&brights_timer,500)){}
-				setWhite(0xFFFF); // 100%
-				brights_timer = millis();
-				while(!check_timer_expired(&brights_timer,1000)){}
-				setWhite(0xFFFF*((float)lowbeam_level/100));
-				BRIGHTS = false;
+			uint16_t temp_low_level = 0xFFFF*((float)lowbeam_level/100);
+			if(overtemp(false)){// Dim to low level if temp limit is reached
+				if(BRIGHTS){
+					light_warning_blink(LIGHT_HEAD, temp_low_level, 0xFFFF);
+					BRIGHTS = false;
+					cooling_timer_reset();
+				}else{
+					// TODO
+				}
 			}
 
 			if(BRIGHTS) {
 				setWhite(0xFFFF); // 100%
 			} else {
-				brights_timer = millis(); // reset the timer when low
-				setWhite(0xFFFF*((float)lowbeam_level/100));
+				setWhite(temp_low_level);
 			}
 		} else {
-			setWhite(0xFFFF);
+				setWhite(0xFFFF);
 		}
 	} else {
 		setWhite(0);
@@ -1366,6 +1363,180 @@ void shuffle_light_modes(void){
 		}
 		shuffle_timer = millis();
 	}
+}
+
+#define brakingActTime 1500
+void sensBraking(){ // Detect if the board has been decelerating for longer than the set threshold
+	static long brakingTime = 0;
+
+	if(cay < -50){
+		if(check_timer_expired(&brakingTime,brakingActTime)){
+			BlinkTail(0xFFFF,10);
+		}
+		} else{
+		brakingTime = millis();
+	}
+}
+
+void light_warning_blink(uint8_t controlled_light, uint16_t low_level, uint16_t high_level){
+	uint32_t headlight_blink_timer = 0;
+	for(int i = 0; i < 2; i++){
+		if(controlled_light == LIGHT_HEAD){
+			setWhite(low_level);
+		} else if(controlled_light == LIGHT_BRAKE){
+			setRed(low_level);
+		}
+
+		headlight_blink_timer = millis();
+		while(!check_timer_expired(&headlight_blink_timer,500)){}
+
+		if(controlled_light == LIGHT_HEAD){
+			setWhite(high_level);
+		} else if(controlled_light == LIGHT_BRAKE){
+			setRed(high_level);
+		}
+
+		headlight_blink_timer = millis();
+		while(!check_timer_expired(&headlight_blink_timer,1000)){}
+	}
+	if(controlled_light == LIGHT_HEAD){
+		setWhite(low_level);
+	} else if(controlled_light == LIGHT_BRAKE){
+		setRed(low_level);
+	}
+}
+
+bool thermal_throttle_helper(uint8_t controlled_light){
+	// TODO: Stage timer. Increment stage every 2000s
+	static bool THROTTLE_HEAD = false;
+	static bool THROTTLE_BRAKE = false;
+	static bool THROTTLE_SIDE = false;
+
+	if(overtemp(false)){
+		if(!coolingDown()){
+			if(thermal_throttle_stage < THERM_TROTTLE_STAGE3){
+				thermal_throttle_stage++;
+			}
+			cooling_timer_reset();
+		}
+		if(BRIGHTS_ENABLED && BRIGHTS){
+			THROTTLE_HEAD = false;
+		} else if(!BRIGHTS_ENABLED || (BRIGHTS_ENABLED && !BRIGHTS)) {
+			THROTTLE_HEAD = (thermal_throttle_stage >= THERM_TROTTLE_STAGE3);
+		}
+		THROTTLE_BRAKE = (thermal_throttle_stage >= THERM_TROTTLE_STAGE2);
+		THROTTLE_SIDE = (thermal_throttle_stage >= THERM_TROTTLE_STAGE1);
+	} else {
+		thermal_throttle_stage = 0;
+		THROTTLE_HEAD = false;
+		THROTTLE_BRAKE = false;
+		THROTTLE_SIDE = false;
+		return false;
+	}
+	switch(controlled_light){
+		case LIGHT_HEAD:
+			return THROTTLE_HEAD;
+			break;
+		case LIGHT_BRAKE:
+			return THROTTLE_BRAKE;
+			break;
+		case LIGHT_SIDE:
+			return THROTTLE_SIDE;
+			break;
+	}
+}
+
+#define OVERTEMP_TIME_LIMIT 3000
+// true if over temp limit for more than 3s
+bool overtemp(uint8_t isHardLimit){ 
+	static uint32_t overtemp_soft_timer = 0;
+	static uint32_t overtemp_hard_timer = 0;
+
+	bool result = false;
+
+	if(!isHardLimit){
+		if(IMU_temp > TEMP_LIMIT_SOFT){
+			if(check_timer_expired(&overtemp_soft_timer, OVERTEMP_TIME_LIMIT)){
+				result = true;
+			}
+		} else{
+			overtemp_soft_timer = millis();
+		}
+	} else {
+		if(IMU_temp > TEMP_LIMIT_HARD){
+			if(check_timer_expired(&overtemp_hard_timer, OVERTEMP_TIME_LIMIT)){
+				result = true;
+			}
+		} else{
+			overtemp_hard_timer = millis();
+		}
+	}
+
+	return result;
+}
+
+
+bool coolingDown(){
+	static uint32_t cooling_sample_timer = 0;
+	static int cooling_sample_index = 0;
+	static float cooling_samples[COOLING_SAMPLE_NUM]; 
+
+	bool result = false;
+	int compare_index = 0;
+
+	if(check_timer_expired(&cooling_sample_timer, COOLING_SAMPLE_PERIOD)){
+		cooling_sample_index++;
+		if(cooling_sample_index == COOLING_SAMPLE_NUM){
+			cooling_sample_index = 0;
+		}
+
+		cooling_samples[cooling_sample_index] = IMU_temp;
+
+		compare_index = (cooling_sample_index-COOLING_SAMPLE_NUM+1);
+		if(compare_index < 0)
+			compare_index += COOLING_SAMPLE_NUM;
+
+		cooling_sample_timer = millis();
+	}
+	
+	if((cooling_samples[cooling_sample_index] - cooling_samples[compare_index]) <= 0.0){
+		result = true;
+	}
+	if(check_timer_expired(&cooling_event_timer, COOLING_EVENT_BUFFER)){
+		return result;
+	} else{
+		return true;
+	}
+}
+
+void cooling_timer_reset(){
+	cooling_event_timer = millis();
+}
+
+void thermal_throttle(){
+	if(thermal_throttle_helper(LIGHT_HEAD)){
+		if(HEADLIGHTS){
+			light_warning_blink(LIGHT_HEAD, 0x5555, 0xFFFF);
+			HEADLIGHTS = false;
+		}
+	}
+	/*thermal_throttle_helper(LIGHT_BRAKE){
+		ERROR_LEDs(ERROR_PURPLE, LONG_ERROR);
+	}*/
+	if(thermal_throttle_helper(LIGHT_SIDE)){
+		if(SIDELIGHTS){
+			SIDELIGHTS = false;
+			ERROR_LEDs(ERROR_TEAL, SHORT_ERROR);
+		}
+	}
+	
+	if(overtemp(true) && !coolingDown()){
+		ERROR_LEDs(ERROR_RED,LONG_ERROR);
+		LIGHTS_ON = false;
+		SIDELIGHTS = false;
+		HEADLIGHTS = false;
+		cooling_timer_reset();
+	}	
 }
 #endif
 

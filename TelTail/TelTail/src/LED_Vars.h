@@ -20,6 +20,9 @@
 #ifndef LEDVARS_H
 #define LEDVARS_H
 
+#define TURN_OFF_TIME 400
+#define TURN_ON_TIME 250
+#define SHUFFLE_TIME 30000
 
 enum modes_analog{
 	MODE_ANALOG_STATIC = 0,
@@ -111,6 +114,20 @@ enum ERROR_duration{
 	SHORT_ERROR, // 2s
 	LONG_ERROR, // 5s
 	PERMINENT_ERROR
+};
+
+enum light_type{
+	LIGHT_HEAD = 0,
+	LIGHT_BRAKE,
+	LIGHT_SIDE
+};
+
+enum thermal_throttle_stages{
+	THERM_TROTTLE_STAGE1 = 1,
+	THERM_TROTTLE_STAGE2,
+	THERM_TROTTLE_STAGE3,
+	THERM_TROTTLE_STAGE4,
+	THERM_TROTTLE_STAGE5
 };
 
 struct RGB_Vals{
@@ -218,10 +235,16 @@ uint32_t digital_refresh_time = 0;
 uint8_t L_SPI_send_buf[(MAX_LEDCOUNT*4)+8];
 uint8_t R_SPI_send_buf[(MAX_LEDCOUNT*4)+8];
 
+#define TEMP_LIMIT_HARD 85.0
+#define TEMP_LIMIT_SOFT 75.0
+#define COOLING_EVENT_BUFFER 7500
+#define COOLING_SAMPLE_PERIOD 1000
+#define COOLING_SAMPLE_NUM 7
+uint32_t cooling_event_timer = 0;
+uint8_t thermal_throttle_stage = 0;
 
 struct spi_module L_LED_SPI_instance;
 struct spi_module R_LED_SPI_instance;
-
 
 // Brightness: 1-31
 const uint8_t brightness = 31;

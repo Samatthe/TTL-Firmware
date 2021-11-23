@@ -44417,7 +44417,7 @@ void vesc_read_all(){
    132fe:	e07d      	b.n	133fc <vesc_read_all+0x130>
 		if(check_timer_expired(&vesc_usart_time, VESC_UART_PERIOD)){
    13300:	4b48      	ldr	r3, [pc, #288]	; (13424 <vesc_read_all+0x158>)
-   13302:	210f      	movs	r1, #15
+   13302:	2114      	movs	r1, #20
    13304:	0018      	movs	r0, r3
    13306:	4b48      	ldr	r3, [pc, #288]	; (13428 <vesc_read_all+0x15c>)
    13308:	4798      	blx	r3
@@ -45974,12 +45974,12 @@ bool CHECK_FOR_NOISE_ESC(struct usart_module *const module, uint8_t buf[MAX_PAYL
 void detect_esc_uart_connected(void){
    13d48:	b580      	push	{r7, lr}
    13d4a:	af00      	add	r7, sp, #0
-	if(port_pin_get_input_level(ESC_UART_RXTX_1) && port_pin_get_input_level(ESC_UART_RXTX_2)){
+	if(port_pin_get_input_level(ESC_UART_RXTX_1) || port_pin_get_input_level(ESC_UART_RXTX_2)){
    13d4c:	2010      	movs	r0, #16
    13d4e:	4b07      	ldr	r3, [pc, #28]	; (13d6c <detect_esc_uart_connected+0x24>)
    13d50:	4798      	blx	r3
    13d52:	1e03      	subs	r3, r0, #0
-   13d54:	d007      	beq.n	13d66 <detect_esc_uart_connected+0x1e>
+   13d54:	d104      	bne.n	13d60 <detect_esc_uart_connected+0x18>
    13d56:	2011      	movs	r0, #17
    13d58:	4b04      	ldr	r3, [pc, #16]	; (13d6c <detect_esc_uart_connected+0x24>)
    13d5a:	4798      	blx	r3

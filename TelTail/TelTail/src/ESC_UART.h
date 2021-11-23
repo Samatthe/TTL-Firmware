@@ -24,7 +24,7 @@
 #include "ESC_Vars.h"
 #include <math.h>
 
-#define VESC_UART_PERIOD 15
+#define VESC_UART_PERIOD 20
 
 struct chuck_data{
 	int8_t js_x;
@@ -835,7 +835,7 @@ bool CHECK_FOR_NOISE_ESC(struct usart_module *const module, uint8_t buf[MAX_PAYL
 
 
 void detect_esc_uart_connected(void){
-	if(port_pin_get_input_level(ESC_UART_RXTX_1) && port_pin_get_input_level(ESC_UART_RXTX_2)){
+	if(port_pin_get_input_level(ESC_UART_RXTX_1) || port_pin_get_input_level(ESC_UART_RXTX_2)){
 		ESC_UART_DETECTED = true;
 	}
 }

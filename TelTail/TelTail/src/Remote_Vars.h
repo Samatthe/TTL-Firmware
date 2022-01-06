@@ -36,5 +36,8 @@ uint8_t remote_y = 0;
 uint8_t remote_x = 0;
 uint8_t remote_btn_state = 0;
 uint8_t lremote_btn_state = 0;
+uint8_t remote_btn_default_state = 0;
+
+uint8_t DEFAULT_SET = false;
 
 #endif

@@ -931,6 +931,7 @@ void BrakeLight(){
 				case BRAKE_FADE:
 				brake_temp = (((0xFFFF-brake_offset)/(128-(128*((float)deadzone/100.0)))*((128-(128*((float)deadzone/100.0)))-temp_y))+brake_offset);
 				setRed(brake_temp);
+				//sensBraking();
 				break;
 				case BRAKE_BLINK:
 				BlinkTail(0xFFFF, 7);
@@ -1365,15 +1366,15 @@ void shuffle_light_modes(void){
 	}
 }
 
-#define brakingActTime 1500
+#define brakingActTime 1000
 void sensBraking(){ // Detect if the board has been decelerating for longer than the set threshold
 	static long brakingTime = 0;
 
-	if(cay < -50){
+	if(ayKalman < -50){
 		if(check_timer_expired(&brakingTime,brakingActTime)){
 			BlinkTail(0xFFFF,10);
 		}
-		} else{
+	} else{
 		brakingTime = millis();
 	}
 }

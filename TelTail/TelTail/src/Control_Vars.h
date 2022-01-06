@@ -24,7 +24,8 @@ uint8_t VescRemoteX = 0, VescRemoteY = 0;
 
 #define PPM_IN PIN_PB02
 
-#define BUTTON_TAP_TIME 750
+#define BUTTON_TAP_DOWN_TIME 500
+#define BUTTON_TAP_UP_TIME 500
 #define BUTTON_LONG_HOLD_TIME 1500
 
 bool AUX_ENABLED = false;
@@ -57,6 +58,7 @@ bool tapSequence = 0;
 uint8_t tapIndex = 0;
 bool AppControlled = false;
 uint8_t AppRemoteY = 128;
+bool FirstPress = 1;
 
 uint32_t ButtonHeldTime = 0;
 uint32_t ButtonDownTime = 0;

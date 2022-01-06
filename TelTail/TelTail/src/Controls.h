@@ -172,6 +172,9 @@ void HandleUserInput()
 		case BTN_MOMENTARY: 
 		case BTN_LATCHED:
 			remote_btn_state = port_pin_get_input_level(PPM_IN);
+			if(!DEFAULT_SET){
+				remote_btn_default_state = remote_btn_state;
+			}
 			break;
 		case BTN_LATCHED_PPM:{
 				static bool FIRST_READ = true;
@@ -206,45 +209,50 @@ void HandleUserInput()
 			remote_btn_state = 0;
 			break;
 	}
+	
+	if(!DEFAULT_SET){
+		remote_btn_default_state = remote_btn_state;
+		DEFAULT_SET = true;
+	}
 
 	////   Determine the time the button was held down and released   ////
 	//////////////////////////////////////////////////////////////////////
 	if(button_type != BTN_LATCHED && button_type != BTN_LATCHED_PPM){
-		if(remote_btn_state == 1 && lremote_btn_state == 0){
+		if(remote_btn_state == !remote_btn_default_state && lremote_btn_state == remote_btn_default_state){
 			lButtonTime = millis(); // Mark the time of button state transition
 			ButtonUpTime = 0;
-		} else if(remote_btn_state == 0 && lremote_btn_state == 1){
+		} else if(remote_btn_state == remote_btn_default_state && lremote_btn_state == !remote_btn_default_state){
 			check_time(&lButtonTime);
 			ButtonDownTime = millis() - lButtonTime;  // Track time button was pressed
 
 			lButtonTime = millis();  // Mark the time of button state transition
 			ButtonHeldTime = 0;
-		} else if(remote_btn_state == 0 && lremote_btn_state == 0){
+		} else if(remote_btn_state == remote_btn_default_state && lremote_btn_state == remote_btn_default_state){
 			check_time(&lButtonTime);
 			ButtonUpTime = millis() - lButtonTime; // Track time button is not pressed
 
 			ButtonDownTime = 0;
 			TurnSignalOn = false;
-		} else if(remote_btn_state == 1 && lremote_btn_state == 1){
+		} else if(remote_btn_state == !remote_btn_default_state && lremote_btn_state == !remote_btn_default_state){
 			check_time(&lButtonTime);
 			ButtonHeldTime = millis() - lButtonTime; // Track time button is not pressed
 		}
 	} else {
 		ButtonHeldTime = 0;
-		if(remote_btn_state == 1 && lremote_btn_state == 0){
+		if(remote_btn_state == !remote_btn_default_state && lremote_btn_state == remote_btn_default_state){
 			ButtonDownTime = 250;  // Track time button was pressed
 			lButtonTime = millis(); // Mark the time of button state transition
 			ButtonUpTime = 0;
-		} else if(remote_btn_state == 0 && lremote_btn_state == 1){
+		} else if(remote_btn_state == remote_btn_default_state && lremote_btn_state == !remote_btn_default_state){
 			ButtonDownTime = 250;  // Track time button was pressed
 			lButtonTime = millis();  // Mark the time of button state transition
 			ButtonUpTime = 0;
-		} else if(remote_btn_state == 0 && lremote_btn_state == 0){
+		} else if(remote_btn_state == remote_btn_default_state && lremote_btn_state == remote_btn_default_state){
 			check_time(&lButtonTime);
 			ButtonUpTime = millis() - lButtonTime; // Track time button is not pressed
 
 			ButtonDownTime = 0;
-		} else if(remote_btn_state == 1 && lremote_btn_state == 1){
+		} else if(remote_btn_state == !remote_btn_default_state && lremote_btn_state == !remote_btn_default_state){
 			check_time(&lButtonTime);
 			ButtonUpTime = millis() - lButtonTime; // Track time button is not pressed
 			
@@ -256,14 +264,14 @@ void HandleUserInput()
 	////////   Determine the type of button press that occurred   ////////
 	//////////////////////////////////////////////////////////////////////
 	ButtonPressType = PRESS_NONE;
-	if(ButtonDownTime > 0 && ButtonDownTime < BUTTON_TAP_TIME){ // Button Tap
+	if(ButtonDownTime > 0 && ButtonDownTime < BUTTON_TAP_DOWN_TIME){ // Button Tap
 		tapIndex++;
-	} else if(ButtonDownTime > BUTTON_TAP_TIME && ButtonDownTime < BUTTON_LONG_HOLD_TIME && !TurnSignalOn){ // Medium Press
+	} else if(ButtonDownTime > BUTTON_TAP_DOWN_TIME && ButtonDownTime < BUTTON_LONG_HOLD_TIME && !TurnSignalOn){ // Medium Press
 		ButtonPressType = MEDIUM_PRESS;
 	} else if(ButtonDownTime >= BUTTON_LONG_HOLD_TIME && !TurnSignalOn){ // Long Press
 		ButtonPressType = LONG_PRESS;
 	}
-	if(tapIndex > 0 && ButtonUpTime > 200){
+	if(tapIndex > 0 && ButtonUpTime > BUTTON_TAP_UP_TIME){
 		tapSequence = 1;
 	}
 	if(tapSequence){
@@ -271,8 +279,13 @@ void HandleUserInput()
 			ButtonPressType = LEFT_TAP;
 		else if(remote_type == REMOTE_UART_DUAL && VescRemoteX >= 150 && tapIndex == 1)
 		ButtonPressType = RIGHT_TAP;
-		else*/ if(tapIndex == 1){
-			ButtonPressType = SINGLE_TAP;
+		else*/ 
+		if(tapIndex == 1){
+			if(FirstPress && button_type == BTN_LATCHED_PPM){
+				FirstPress = 0;
+			}else{
+				ButtonPressType = SINGLE_TAP;
+			}
 		}
 		else if(tapIndex == 2)
 			ButtonPressType = DOUBLE_TAP;

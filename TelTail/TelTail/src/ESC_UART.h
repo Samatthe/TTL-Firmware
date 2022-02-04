@@ -42,6 +42,7 @@ uint8_t COMM_GET_VALUES = 0;
 uint8_t COMM_GET_MCCONF = 0;
 uint8_t COMM_ALIVE = 0;
 uint8_t COMM_GET_DECODED_PPM = 0;
+uint8_t COMM_GET_DECODED_ADC = 0;
 uint8_t COMM_GET_DECODED_CHUK = 0;
 uint8_t COMM_SET_CHUCK_DATA = 0;
 
@@ -101,6 +102,7 @@ uint32_t vesc_usart_timeout = 100;
 struct chuck_data send_chuck_struct;
 struct chuck_data rec_chuck_struct;
 bool READ_VESC_PWM = false;
+bool READ_VESC_ADC = false;
 bool READ_VESC_CHUCK = false;
 bool SEND_VESC_CHUCK = false;
 bool READ_VESC_VALS = false;
@@ -304,6 +306,9 @@ void process_recieved_packet(){
 		GET_LIMITS = 0;
 	} else if(packet_id == COMM_GET_DECODED_PPM){
 		latest_vesc_vals.pwm_val = (int32_t)(((vesc_revieve_packet.payload[1]&0x00FF)<<24)|((vesc_revieve_packet.payload[2]&0x00FF)<<16)|((vesc_revieve_packet.payload[3]&0x00FF)<<8)|(vesc_revieve_packet.payload[4]&0x00FF));
+	} else if(packet_id == COMM_GET_DECODED_ADC){
+		latest_vesc_vals.ADC1_val = (int32_t)(((vesc_revieve_packet.payload[1]&0x00FF)<<24)|((vesc_revieve_packet.payload[2]&0x00FF)<<16)|((vesc_revieve_packet.payload[3]&0x00FF)<<8)|(vesc_revieve_packet.payload[4]&0x00FF));
+		latest_vesc_vals.ADC2_val = (int32_t)(((vesc_revieve_packet.payload[9]&0x00FF)<<24)|((vesc_revieve_packet.payload[10]&0x00FF)<<16)|((vesc_revieve_packet.payload[11]&0x00FF)<<8)|(vesc_revieve_packet.payload[12]&0x00FF));
 	} else if(packet_id == COMM_GET_DECODED_CHUK){
 		//if(button_type == BTN_UART_C){
 			rec_chuck_struct.bt_c = ((((vesc_revieve_packet.payload[1] & 0x000000FF) << 24)|((vesc_revieve_packet.payload[2] & 0x000000FF) << 16)|((vesc_revieve_packet.payload[3] & 0x000000FF) << 8)|(vesc_revieve_packet.payload[4] & 0x000000FF)) == 0xFFF0DC45); //-992187
@@ -436,6 +441,22 @@ void vesc_get_pwm(){
 	}
 }
 
+void vesc_get_adc(){
+	if(!SEND_VESC_CHUCK)
+	{
+		struct uart_packet send_pack;
+
+		send_pack.start = 0x02;
+		send_pack.len[0] = 0x01;
+		send_pack.payload[0] = COMM_GET_DECODED_ADC;
+		uint16_t crc = crc16(send_pack.payload, 1);
+		send_pack.crc[0] = (uint8_t)((crc&0xFF00)>>8);
+		send_pack.crc[1] = (uint8_t)(crc&0x00FF);
+
+		send_packet(send_pack);
+	}
+}
+
 void vesc_get_chuck(){
 	struct uart_packet send_pack;
 
@@ -527,10 +548,18 @@ void vesc_read_all(){
 				}
 				case 4:
 				if(!SEND_VESC_CHUCK){
+					read_index++;
+				} else {
+					read_index++;
+					vesc_set_chuck();
+				}
+				break;
+				case 5:
+				if(!READ_VESC_ADC){
 					read_index=0;
 				} else {
 					read_index=0;
-					vesc_set_chuck();
+					vesc_get_adc();
 				}
 				break;
 			}
@@ -574,6 +603,7 @@ void detect_vesc_firmware(){
 				COMM_GET_MCCONF = 13;
 				COMM_ALIVE = 29;
 				COMM_GET_DECODED_PPM = 30;
+				COMM_GET_DECODED_ADC = 31;
 				COMM_GET_DECODED_CHUK = 32;
 				COMM_SET_CHUCK_DATA = 34;
 				break;
@@ -586,6 +616,7 @@ void detect_vesc_firmware(){
 				COMM_GET_MCCONF = 14;
 				COMM_ALIVE = 30;
 				COMM_GET_DECODED_PPM = 31;
+				COMM_GET_DECODED_ADC = 32;
 				COMM_GET_DECODED_CHUK = 33;
 				COMM_SET_CHUCK_DATA = 35;
 				break;

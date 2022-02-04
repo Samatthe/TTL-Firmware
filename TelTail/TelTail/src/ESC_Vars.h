@@ -62,6 +62,8 @@ struct vesc_vals {
 	//uint8_t controller_id;
 	//uint8_t NTC_temp;
 	int32_t pwm_val;
+	int32_t ADC1_val;
+	int32_t ADC2_val;
 	uint8_t FW_VERSION_MAJOR;
 	uint8_t FW_VERSION_MINOR;
 };

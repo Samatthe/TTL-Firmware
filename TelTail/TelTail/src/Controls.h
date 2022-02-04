@@ -137,18 +137,16 @@ void HandleUserInput()
 	///////////////   Use the appropriate throttle input   ///////////////
 	//////////////////////////////////////////////////////////////////////
 	switch(remote_type){
-		case REMOTE_PPM:
-		case REMOTE_UART_PPM:{
+		case REMOTE_PPM:{
 			READ_VESC_PWM = true;
 			float temp = (((float)latest_vesc_vals.pwm_val + 595000.0)*(255.0/1495000.0));
-			//temp = -temp + 255;
 			if(temp < 0)
 				temp = 0;
 			else if(temp > 255)
 				temp = 255;
 			remote_y = (uint8_t)(temp);
 			break;}
-		case REMOTE_UART_SINGLE:
+		case REMOTE_UART:
 		//case REMOTE_UART_DUAL:
 			READ_VESC_CHUCK = true;
 			remote_y = rec_chuck_struct.js_y;
@@ -156,6 +154,12 @@ void HandleUserInput()
 			//	remote_x = rec_chuck_struct.js_x;
 			//else
 				remote_x = 255/2;
+			break;
+		case REMOTE_ADC:
+			READ_VESC_ADC = true;
+			int32_t accel_val = ((latest_vesc_vals.ADC1_val >> 12)/2);
+			int32_t brake_val = ((latest_vesc_vals.ADC2_val >> 12)/2);
+			remote_y = (uint8_t)(accel_val-brake_val+(0x0FF/2));
 			break;
 		case REMOTE_APP:
 			//if(app_remote_check && REMOTE_TYPE < 2)

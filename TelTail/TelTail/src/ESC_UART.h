@@ -311,16 +311,10 @@ void process_recieved_packet(){
 		latest_vesc_vals.ADC2_val = (int32_t)(((vesc_revieve_packet.payload[9]&0x00FF)<<24)|((vesc_revieve_packet.payload[10]&0x00FF)<<16)|((vesc_revieve_packet.payload[11]&0x00FF)<<8)|(vesc_revieve_packet.payload[12]&0x00FF));
 	} else if(packet_id == COMM_GET_DECODED_CHUK){
 		//if(button_type == BTN_UART_C){
-			rec_chuck_struct.bt_c = ((((vesc_revieve_packet.payload[1] & 0x000000FF) << 24)|((vesc_revieve_packet.payload[2] & 0x000000FF) << 16)|((vesc_revieve_packet.payload[3] & 0x000000FF) << 8)|(vesc_revieve_packet.payload[4] & 0x000000FF)) == 0xFFF0DC45); //-992187
-			rec_chuck_struct.bt_z = rec_chuck_struct.bt_c;
-		//}
-		//rec_chuck_struct.js_x = vesc_revieve_packet.payload[1];
-		//remote_y = vesc_revieve_packet.payload[2];
-		//rec_chuck_struct.bt_c = vesc_revieve_packet.payload[3];
-		//rec_chuck_struct.bt_z = vesc_revieve_packet.payload[4];
-		//rec_chuck_struct.acc_x = (int16_t)(((vesc_revieve_packet.payload[5] & 0x00FF) << 8)|(vesc_revieve_packet.payload[6] & 0x00FF));
-		//rec_chuck_struct.acc_y = (int16_t)(((vesc_revieve_packet.payload[7] & 0x00FF) << 8)|(vesc_revieve_packet.payload[8] & 0x00FF));
-		//rec_chuck_struct.acc_z = (int16_t)(((vesc_revieve_packet.payload[9] & 0x00FF) << 8)|(vesc_revieve_packet.payload[10] & 0x00FF));
+			//rec_chuck_struct.bt_c = ((((vesc_revieve_packet.payload[1] & 0x000000FF) << 24)|((vesc_revieve_packet.payload[2] & 0x000000FF) << 16)|((vesc_revieve_packet.payload[3] & 0x000000FF) << 8)|(vesc_revieve_packet.payload[4] & 0x000000FF)) == 0xFFF0DC45); //-992187
+			//rec_chuck_struct.bt_z = rec_chuck_struct.bt_c;
+		//} LEGACY CUSTOM BUTTON IMPLEMENTATION FOR ACE
+		rec_chuck_struct.js_y = (((((int32_t) vesc_revieve_packet.payload[1]) << 24 | ((int32_t) vesc_revieve_packet.payload[2]) << 16 | ((int32_t) vesc_revieve_packet.payload[3]) << 8 | ((int32_t) vesc_revieve_packet.payload[4]))*128)/1000000)+128;
 	}/* else if(packet_id == COMM_GET_VALUES_SELECTIVE){ // Only available in latest Official FW
 		latest_vesc_vals.temp_fet_filtered = (vesc_revieve_packet.payload[5] << 8) | vesc_revieve_packet.payload[6];
 		latest_vesc_vals.avg_motor_current = (vesc_revieve_packet.payload[7] << 24) | (vesc_revieve_packet.payload[8] << 16) | (vesc_revieve_packet.payload[9] << 8) | vesc_revieve_packet.payload[10];
@@ -570,6 +564,7 @@ void vesc_read_all(){
 	READ_VESC_FW = false;
 	READ_VESC_VALS = false;
 	READ_VESC_CHUCK = false;
+	READ_VESC_ADC = false;
 }
 
 

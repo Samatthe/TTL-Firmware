@@ -25,4 +25,4 @@ uint16_t HW_VER = 400;
 #elif defined(HW_4v1)
 uint16_t HW_VER = 401;
 #endif
-uint16_t TTL_FW = 17; // Format: v12.34 = 1234 | v0.5 = 0005#define BOOT_BTN PIN_PA15#endif
+uint16_t TTL_FW = 18; // Format: v12.34 = 1234 | v0.5 = 0005#define BOOT_BTN PIN_PA15#endif

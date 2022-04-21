@@ -378,7 +378,7 @@ int main (void)
 	memset(ble_write_buffer, 0, BLE_WRITE_BUF_SIZE);
 
 	// Initialize local variables used in main
-	VescRemoteX = VescRemoteY = 128;
+	VescRemoteX = VescRemoteY = rec_chuck_struct.js_y = 128;
 
 	int BLE_TX_INDEX = 0;
 	uint16_t BLE_TX_DELAY = 15;

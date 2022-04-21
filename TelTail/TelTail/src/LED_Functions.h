@@ -735,7 +735,12 @@ void DigitalSideLights(){
 					// Slider 1 controls gradient zoom
 					// Slider 2 controls gradient position 
 					// slider 3 controls brightness
-					setDigitalHue(0, Digital_Static_Zoom, Digital_Static_Shift*(764/100)*Digital_Static_Zoom, (uint16_t)(Digital_Static_Brightness*(31.0/100.0)), false);
+					if(Digital_Static_Zoom==15){
+						uint8_t temp_zoom = 100;
+						setDigitalHue(0, temp_zoom, Digital_Static_Shift*(764/100)*temp_zoom, (uint16_t)(Digital_Static_Brightness*(31.0/100.0)), false);
+					} else{
+						setDigitalHue(0, Digital_Static_Zoom, Digital_Static_Shift*(764/100)*Digital_Static_Zoom, (uint16_t)(Digital_Static_Brightness*(31.0/100.0)), false);
+					}
 					break;
 				case MODE_DIGITAL_SKITTLES:
 				{

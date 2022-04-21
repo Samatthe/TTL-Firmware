@@ -1,2 +1,2 @@
-- Added support for ADC throttle input
-   * allows ebike and escooters to take advantage of the TTL system
+- Fixed UART remote implementation to allow use of UART based remotes like the VX2 with the throttle reactive light modes
+- Made it so that the max zoom level of the digital static mode sets all LEDs to the same color

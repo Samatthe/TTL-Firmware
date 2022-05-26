@@ -583,7 +583,8 @@ void detect_vesc_firmware(){
 			esc_fw = FW_3v7_3v49;
 		} else if((latest_vesc_vals.FW_VERSION_MAJOR == 3 && latest_vesc_vals.FW_VERSION_MINOR >= 7 && latest_vesc_vals.FW_VERSION_MINOR <= 67)||
 		(latest_vesc_vals.FW_VERSION_MAJOR == 4 && latest_vesc_vals.FW_VERSION_MINOR >= 0 && latest_vesc_vals.FW_VERSION_MINOR <= 2)||
-		(latest_vesc_vals.FW_VERSION_MAJOR == 5 && latest_vesc_vals.FW_VERSION_MINOR >= 0 && latest_vesc_vals.FW_VERSION_MINOR <= 2)){ // >= 3.50 && <= 5.2
+		(latest_vesc_vals.FW_VERSION_MAJOR == 5 && latest_vesc_vals.FW_VERSION_MINOR >= 0 && latest_vesc_vals.FW_VERSION_MINOR <= 3)||
+		(latest_vesc_vals.FW_VERSION_MAJOR == 6 && latest_vesc_vals.FW_VERSION_MINOR >= 0 && latest_vesc_vals.FW_VERSION_MINOR <= 0)){ // >= 3.50 && <= 6.0
 			esc_fw = FW_3v50_5v2;
 		} else if(latest_vesc_vals.FW_VERSION_MAJOR == 23){ // Unity
 			esc_fw = FW_UNITY;
@@ -603,7 +604,7 @@ void detect_vesc_firmware(){
 				COMM_SET_CHUCK_DATA = 34;
 				break;
 			case FW_3v7_3v49: // >= 3.7 && <= 3.49
-			case FW_3v50_5v2: // >= 3.50 && <= 5.2
+			case FW_3v50_5v2: // >= 3.50 && <= 6.0
 			case FW_UNITY:
 			case FW_ACKMANIAC:
 				COMM_FW_VERSION = 0;
@@ -633,7 +634,7 @@ void detect_vesc_firmware(){
 				GET_VALUES_FAULT = 55;
 				break;
 			case FW_3v7_3v49: // >= 3.7 && <= 3.49
-			case FW_3v50_5v2: // >= 3.50 && <= 5.2
+			case FW_3v50_5v2: // >= 3.50 && <= 6.0
 			case FW_ACKMANIAC:
 				GET_VALUES_FET_TEMP = 1;
 				GET_VALUES_MTR_CURR = 5;
@@ -709,7 +710,7 @@ void detect_vesc_firmware(){
 				GET_MCCONF_DUTY_MIN = 82;
 				GET_MCCONF_DUTY_MAX = 86;
 				break;
-			case FW_3v50_5v2: // >= 3.50 && <= 5.2
+			case FW_3v50_5v2: // >= 3.50 && <= 6.0
 				GET_MCCONF_MTR_CURR_MAX = 9;
 				GET_MCCONF_MTR_CURR_MIN = 13;
 				GET_MCCONF_IN_CURR_MAX = 17;

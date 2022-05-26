@@ -1,2 +1,1 @@
-- Fixed UART remote implementation to allow use of UART based remotes like the VX2 with the throttle reactive light modes
-- Made it so that the max zoom level of the digital static mode sets all LEDs to the same color
+- Added support for VESC FWs 5.3 and 6.0

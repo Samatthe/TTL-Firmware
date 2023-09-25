@@ -300,6 +300,13 @@ void clockInit(void)
 
 int main (void)
 {
+#ifdef SBX
+	int sbx_wait = 0;
+	while(sbx_wait < 2000000){
+		sbx_wait++;
+	}
+#endif
+	
 	system_init();
 	//clockInit();
 	configure_tc(); // Configure millis timer
@@ -398,6 +405,7 @@ int main (void)
 	//testLEDs();
 #endif
 uint32_t periodic_message_timer = 0;
+
 	while(1)
 	{
 		//Send message to app every 10 seconds

@@ -2041,7 +2041,7 @@ void CorrectIMUvalues(uint8_t connector_orient, uint8_t power_orient){
 	} else if(connector_orient == ORIENT_FRONT){ // Connectors Front
 		cay = az; // Verified
 		cgy = gz;
-		cgy = mz;
+		cmy = mz;
 		if(power_orient == ORIENT_UP){ // Power Up
 			cax = -ax; // Verified
 			caz = ay; // Verified

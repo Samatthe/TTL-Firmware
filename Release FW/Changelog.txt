@@ -1,1 +1,3 @@
-- Added support for VESC FWs 5.3 and 6.0
+- Added support for summer boards by adding a power on delay when summer board is selected in the Config.h
+- Corrected IMU axis mapping in the "connector front" configurations
+- Added button state initial condition to fix phantom click on startup

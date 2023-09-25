@@ -176,9 +176,6 @@ void HandleUserInput()
 		case BTN_MOMENTARY: 
 		case BTN_LATCHED:
 			remote_btn_state = port_pin_get_input_level(PPM_IN);
-			if(!DEFAULT_SET){
-				remote_btn_default_state = remote_btn_state;
-			}
 			break;
 		case BTN_LATCHED_PPM:{
 				static bool FIRST_READ = true;
@@ -216,6 +213,7 @@ void HandleUserInput()
 	
 	if(!DEFAULT_SET){
 		remote_btn_default_state = remote_btn_state;
+		lremote_btn_state = remote_btn_default_state;
 		DEFAULT_SET = true;
 	}
 
